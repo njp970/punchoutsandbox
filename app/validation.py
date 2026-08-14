@@ -184,6 +184,14 @@ def detect_document_type(doc: SafeDocument) -> Optional[str]:
         if wtag in ("Request", "Response", "Message"):
             for child in wrapper:
                 ctag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+                # `Message` is `(Status? %cxml.messages;)` and `Response` is
+                # `(Status %cxml.responses;)` — Status is an optional or
+                # mandatory FIRST child, and the real document type follows
+                # it. Returning the first child unconditionally reports a
+                # cancelled punchout (which carries Status 204) as a document
+                # of type "Status", and then refuses to validate it.
+                if ctag == "Status":
+                    continue
                 return ctag
     return None
 

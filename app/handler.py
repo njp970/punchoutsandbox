@@ -18,11 +18,44 @@ from __future__ import annotations
 import os
 import secrets
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from decimal import Decimal as D
 from typing import Optional
 
 from . import storefront
+from .catalogue.data import BY_SKU
+from .catalogue.taxonomy import normalise_uom
+from .cxml.punchout import (CartItem, build_cancel, build_empty_cart,
+                            build_punchout_order_message, render_return_form)
 from .http import (MethodNotAllowed, Request, Response, Router, html,
                    parse_event, redirect, require_edge)
+
+
+def _cart_item(sku: str, quantity: int) -> CartItem:
+    """Turn a catalogue product plus a quantity into the cart line that
+    crosses the wire.
+
+    Two resolutions happen here and nowhere else: the price break is applied
+    (cXML carries one UnitPrice and has no tier structure), and the unit of
+    measure is normalised. The product's raw `uom` is what a sloppy supplier
+    holds; the normalised value is what a conformant one sends — and for the
+    deliberately-quirked lines those differ, which is the point."""
+    product = BY_SKU[sku]
+    uom, _ = normalise_uom(product.uom)
+    return CartItem(
+        supplier_part_id=product.sku,
+        quantity=D(quantity),
+        unit_price=product.price_for(quantity),
+        description=product.description,
+        short_name=product.name[:50],
+        unit_of_measure=uom,
+        classification=product.unspsc,
+        currency=product.currency,
+        supplier_part_auxiliary_id=product.aux_token,
+        manufacturer_part_id=product.manufacturer_part_id,
+        manufacturer_name=product.manufacturer,
+        lead_time_days=product.lead_time_days,
+    )
 
 router = Router()
 
@@ -103,6 +136,53 @@ def cart_add(request: Request) -> Response:
 def cart_remove(request: Request) -> Response:
     _, cart_state = get_session(request)
     return storefront.remove_from_cart(request, cart=cart_state)
+
+
+@router.post("/cart/return")
+def cart_return(request: Request) -> Response:
+    """Return the cart to the buyer as a browser form POST.
+
+    Three outcomes, deliberately distinct because two of them are destructive
+    in opposite directions on an `edit` operation — see
+    `cxml/punchout.py`'s docstring. `mode` comes from which button the user
+    pressed, never inferred from whether the cart happens to be empty."""
+    session, cart_state = get_session(request)
+    if session is None:
+        return html(
+            "<h1>No punchout session</h1><p>There is nowhere to return a cart "
+            'to. Start one from the <a href="/console">console</a>.</p>',
+            status=409,
+        )
+
+    form = request.form()
+    mode = form.get("mode", "cart")
+    encoding = form.get("encoding", "cxml-base64")
+    common = dict(
+        buyer_cookie=session.buyer_cookie,
+        payload_id=f"{secrets.token_hex(8)}@punchoutsandbox.com",
+        timestamp=datetime.now(timezone.utc).astimezone(),
+        from_identity="meridian-supply", to_identity=session.buyer_name or "buyer",
+        sender_identity="meridian-supply",
+        operation_allowed="edit",
+    )
+
+    if mode == "cancel":
+        document = build_cancel(**common)
+    elif mode == "empty":
+        document = build_empty_cart(**common)
+    else:
+        document = build_punchout_order_message(
+            [_cart_item(sku, qty) for sku, qty in cart_state.items()
+             if sku in BY_SKU],
+            **common,
+        )
+
+    # The cart is single-use. Clearing it here means a browser back-button
+    # resubmit cannot double the buyer's requisition — the documented
+    # double-submit failure mode.
+    cart_state.clear()
+    return html(render_return_form(
+        document, browser_form_post_url=session.return_url, encoding=encoding))
 
 
 @router.get("/console")
