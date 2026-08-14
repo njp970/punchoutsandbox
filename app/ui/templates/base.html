@@ -7,58 +7,73 @@
   support link sitting quietly below the nav is the honest way to accept
   goodwill from people the tool actually helped — it asks nothing of a
   first-time visitor mid-debugging, which is when every other product would
-  interrupt them.
+  interrupt them. It is styled as a quiet chip, never a primary button.
 
-  It is `rel="noopener"` and `target="_blank"` because it leaves the site, and
-  it is NOT styled as a primary button. A free diagnostic tool that shouts for
-  money reads as the hobby project BRIEF.md §3 warns the enterprise reader is
-  already suspicious of.
-#}
+  `session` is set whenever the visitor arrived through a punchout handshake.
+  When it is, the chrome changes: a persistent banner names the buyer and the
+  cart becomes a "return to your procurement system" action rather than a
+  checkout. Someone mid-punchout must never be able to lose track of the fact
+  that they are inside someone else's transaction.
+#}<!doctype html>
+<html lang="en" data-theme="{{ theme|default('') }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}PunchOut Sandbox{% endblock %}</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
 <div class="shell">
   <aside class="sidebar">
     <div>
       <a class="brand" href="/" style="text-decoration:none;color:inherit">
         <span class="brand-mark" aria-hidden="true">&lt;/&gt;</span>
-        <span>
-          PunchOut Sandbox
+        <span>PunchOut Sandbox
           <span class="brand-sub" style="display:block">virtual supplier</span>
         </span>
       </a>
     </div>
 
     <nav class="nav">
-      <div class="nav-label">Test</div>
-      <a href="/console"   class="{{ 'active' if nav == 'console' }}">Console</a>
-      <a href="/sessions"  class="{{ 'active' if nav == 'sessions' }}">Sessions</a>
-      <a href="/validate"  class="{{ 'active' if nav == 'validate' }}">Validate a document</a>
-
       <div class="nav-label">Supplier</div>
-      <a href="/shop"      class="{{ 'active' if nav == 'shop' }}">Catalogue</a>
-      <a href="/documents" class="{{ 'active' if nav == 'documents' }}">Documents</a>
-      <a href="/scenarios" class="{{ 'active' if nav == 'scenarios' }}">Break scenarios</a>
+      <a href="/shop" class="{{ 'active' if nav == 'shop' }}">Catalogue</a>
+      <a href="/cart" class="{{ 'active' if nav == 'cart' }}">
+        Cart{% if cart_count %} <span class="pill pill-info">{{ cart_count }}</span>{% endif %}
+      </a>
 
-      <div class="nav-label">Reference</div>
-      <a href="/docs"      class="{{ 'active' if nav == 'docs' }}">Docs</a>
+      <div class="nav-label">Test</div>
+      <a href="/console" class="{{ 'active' if nav == 'console' }}">Console</a>
+      <a href="/sessions" class="{{ 'active' if nav == 'sessions' }}">Sessions</a>
+      <a href="/validate" class="{{ 'active' if nav == 'validate' }}">Validate a document</a>
+      <a href="/docs" class="{{ 'active' if nav == 'docs' }}">Docs</a>
     </nav>
 
-    {# Pushed to the bottom on desktop; inline on mobile, where the sidebar
-       becomes a horizontal bar and `margin-top:auto` has nothing to push
-       against. #}
     <div class="sidebar-foot">
       <a class="support-link" href="https://buymeacoffee.com/neilparkes"
          target="_blank" rel="noopener noreferrer">
-        <span aria-hidden="true">☕</span>
-        <span>Buy me a coffee</span>
+        <span aria-hidden="true">&#9749;</span><span>Buy me a coffee</span>
       </a>
-      <p class="sidebar-foot-note">
-        Free, and staying free. This keeps it hosted.
-      </p>
+      <p class="sidebar-foot-note">Free, and staying free. This keeps it hosted.</p>
     </div>
   </aside>
 
   <main class="main">
     <div class="main-wide">
+      {% if session %}
+      <div class="banner banner-info" style="margin-bottom:20px">
+        <span aria-hidden="true">&#8646;</span>
+        <div>
+          <strong>Punchout session active</strong> &mdash; you arrived from
+          <strong>{{ session.buyer_name }}</strong>{% if session.protocol %}
+          over {{ session.protocol }}{% endif %}.
+          Your cart returns to their system rather than checking out here.
+          <span class="testmark" style="margin-left:6px">test session</span>
+        </div>
+      </div>
+      {% endif %}
       {% block content %}{% endblock %}
     </div>
   </main>
 </div>
+</body>
+</html>

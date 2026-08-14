@@ -19,3 +19,4 @@ infra/cdk.out/
 
 # OS
 .DS_Store
+.preview/

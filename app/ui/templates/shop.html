@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{# The root page's heading IS the supplier name, so appending it again gives
+   "Meridian Supply Co. — Meridian Supply Co." in the browser tab. #}
+{% block title %}{% if heading == supplier %}{{ supplier }}{% else %}{{ heading }} — {{ supplier }}{% endif %}{% endblock %}
+{% block content %}
+
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap">
+  <div>
+    <h1 class="mb-0">{{ heading }}</h1>
+    {% if breadcrumb %}
+    <p class="small muted" style="margin:4px 0 0">
+      <a href="/shop">Catalogue</a>
+      {%- for crumb in breadcrumb %} <span class="faint">/</span>
+        {%- if loop.last %} {{ crumb.name }}
+        {%- else %} <a href="/shop/{{ crumb.id }}">{{ crumb.name }}</a>{% endif %}
+      {%- endfor %}
+    </p>
+    {% else %}
+    <p class="small muted" style="margin:4px 0 0">
+      {{ supplier }} &mdash; {{ total_products }} lines across
+      {{ total_categories }} categories.
+    </p>
+    {% endif %}
+  </div>
+  <form method="get" action="/shop" style="min-width:250px">
+    <input type="text" name="q" placeholder="Search products or part numbers"
+           value="{{ query|default('') }}" aria-label="Search the catalogue">
+  </form>
+</div>
+
+{% if subcategories %}
+<div class="card" style="margin-top:18px">
+  <div class="card-header"><h2 class="card-title">Browse</h2></div>
+  <div class="grid grid-3">
+    {% for cat in subcategories %}
+    <a href="/shop/{{ cat.id }}" class="btn btn-secondary"
+       style="justify-content:space-between;width:100%">
+      <span>{{ cat.name }}</span>
+      <span class="faint small">{{ cat.count }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if products %}
+<div style="margin-top:18px">
+  {% if query %}
+  <p class="small muted">{{ products|length }} result(s) for
+    &ldquo;{{ query }}&rdquo;.</p>
+  {% endif %}
+  <div class="prod-grid">
+    {% for p in products %}
+    <div class="prod">
+      <div class="prod-thumb" aria-hidden="true">{{ p.glyph }}</div>
+      <div class="prod-name">{{ p.name }}</div>
+      <div class="prod-sku">{{ p.sku }}</div>
+      <div>
+        <span class="taxo" title="UNSPSC commodity code">{{ p.unspsc }}</span>
+        {% if p.quirks %}
+        {# Deliberately imperfect data is LABELLED in the storefront. A
+           sandbox that hides its own seeded defects is a puzzle, not a
+           tool — the user needs to know which lines will misbehave and
+           why, so they can choose to add one and watch what happens. #}
+        <span class="pill pill-warn" title="{{ p.quirk_detail }}">quirk</span>
+        {% endif %}
+      </div>
+      <div class="prod-foot">
+        <div>
+          <div class="prod-price">{{ p.price }}</div>
+          {% if p.has_breaks %}
+          <div class="faint small">from {{ p.best_price }}</div>
+          {% endif %}
+        </div>
+        <a class="btn btn-sm" href="/product/{{ p.sku }}">View</a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% elif query %}
+<div class="card" style="margin-top:18px">
+  <p class="mb-0 muted">Nothing matched &ldquo;{{ query }}&rdquo;.</p>
+</div>
+{% endif %}
+
+{% endblock %}

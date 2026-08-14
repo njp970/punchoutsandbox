@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}{{ p.name }} — Meridian Supply Co.{% endblock %}
+{% block content %}
+
+<p class="small muted" style="margin:0 0 10px">
+  <a href="/shop">Catalogue</a>
+  {%- for crumb in breadcrumb %} <span class="faint">/</span>
+    <a href="/shop/{{ crumb.id }}">{{ crumb.name }}</a>
+  {%- endfor %}
+</p>
+
+<div class="grid grid-2" style="align-items:start">
+  <div class="card">
+    <h1 style="font-size:1.35rem">{{ p.name }}</h1>
+    <p class="muted" style="margin-top:-2px">{{ p.description }}</p>
+
+    <div class="table-wrap" style="margin-top:16px">
+      <table>
+        <tr><th>Supplier part ID</th><td class="mono">{{ p.sku }}</td></tr>
+        <tr><th>Manufacturer</th>
+            <td>{{ p.manufacturer }} <span class="mono faint">{{ p.manufacturer_part_id }}</span></td></tr>
+        <tr><th>UNSPSC</th><td class="mono">{{ p.unspsc }}</td></tr>
+        <tr><th>Unit of measure</th>
+            <td class="mono">{{ p.uom }}
+              {% if p.uom_normalised != p.uom %}
+              <span class="pill pill-warn" style="margin-left:6px">emits {{ p.uom_normalised }}</span>
+              {% endif %}
+            </td></tr>
+        {% if p.pack_size > 1 %}
+        <tr><th>Pack size</th><td>{{ p.pack_size }} units per {{ p.uom_normalised }}</td></tr>
+        {% endif %}
+        <tr><th>Lead time</th><td>{{ p.lead_time_days }} days</td></tr>
+        <tr><th>Country of origin</th><td>{{ p.country_of_origin }}</td></tr>
+        {% if p.aux_token %}
+        <tr><th>Auxiliary ID</th>
+            <td class="mono" style="word-break:break-all">{{ p.aux_token }}</td></tr>
+        {% endif %}
+        {% if p.hazardous %}
+        <tr><th>Hazard</th><td><span class="pill pill-warn">hazardous</span></td></tr>
+        {% endif %}
+      </table>
+    </div>
+
+    {% if p.uom_advisory %}
+    <div class="finding finding-advisory" style="margin-top:14px">
+      <div class="finding-top"><span class="pill pill-warn">unit of measure</span></div>
+      <div class="finding-msg">{{ p.uom_advisory }}</div>
+    </div>
+    {% endif %}
+
+    {% for q in p.quirk_notes %}
+    <div class="finding finding-advisory" style="margin-top:10px">
+      <div class="finding-top">
+        <span class="pill pill-warn">deliberate quirk</span>
+        <span class="finding-code">{{ q.slug }}</span>
+      </div>
+      <div class="finding-msg">{{ q.detail }}</div>
+      <div class="finding-hint">Add this line to your cart to see what your
+        buyer system does with it.</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="stack">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Add to cart</h2></div>
+      <div class="stat" style="margin-bottom:14px">
+        <div class="stat-value">{{ p.price }}</div>
+        <div class="stat-label">per {{ p.uom_normalised }}{% if p.pack_size > 1 %}
+          ({{ p.pack_size }} units){% endif %}</div>
+      </div>
+      <form method="post" action="/cart/add">
+        <input type="hidden" name="sku" value="{{ p.sku }}">
+        <div class="field">
+          <label for="qty">Quantity</label>
+          <input type="number" id="qty" name="quantity" value="{{ p.min_order_qty }}"
+                 min="{{ p.min_order_qty }}" step="{{ p.order_increment }}">
+          {% if p.min_order_qty > 1 or p.order_increment > 1 %}
+          <div class="field-hint">
+            Minimum {{ p.min_order_qty }}, in multiples of {{ p.order_increment }}.
+            Neither is a cXML element &mdash; both travel as Extrinsic values.
+          </div>
+          {% endif %}
+        </div>
+        <button class="btn" type="submit" style="width:100%;justify-content:center">
+          Add to cart
+        </button>
+      </form>
+    </div>
+
+    {% if p.price_breaks %}
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Price breaks</h2></div>
+      <p class="card-note">
+        cXML has no tier structure &mdash; <code>ItemIn</code> carries exactly one
+        <code>UnitPrice</code>. These resolve here, and only the resolved price
+        crosses the wire.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Quantity</th><th class="num">Unit price</th></tr></thead>
+          <tbody>
+            <tr><td>1{% if p.price_breaks %}&ndash;{{ p.price_breaks[0].min_qty - 1 }}{% endif %}</td>
+                <td class="num">{{ p.price }}</td></tr>
+            {% for tier in p.price_breaks %}
+            <tr><td>{{ tier.min_qty }}+</td><td class="num">{{ tier.price }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Cart — Meridian Supply Co.{% endblock %}
+{% block content %}
+
+<h1>Your cart</h1>
+
+{% if not lines %}
+<div class="card">
+  <p class="mb-0 muted">Nothing in the cart yet.
+    <a href="/shop">Browse the catalogue</a>.</p>
+  {% if session %}
+  <p class="small muted" style="margin-bottom:0">
+    Returning an <strong>empty</strong> cart is itself a meaningful action, and
+    the two ways of doing it mean opposite things. On an
+    <code>edit</code> operation an empty item list tells the buyer to
+    <strong>delete</strong> the requisition lines, while a
+    <code>204 No Content</code> tells them to change nothing. Both buttons are
+    below so you can send either deliberately.
+  </p>
+  <div class="btn-row" style="margin-top:12px">
+    <form method="post" action="/cart/return"><input type="hidden" name="mode" value="empty">
+      <button class="btn btn-secondary" type="submit">Return empty cart</button></form>
+    <form method="post" action="/cart/return"><input type="hidden" name="mode" value="cancel">
+      <button class="btn btn-secondary" type="submit">Return 204 (cancelled)</button></form>
+  </div>
+  {% endif %}
+</div>
+{% else %}
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Item</th><th>Unit</th><th class="num">Qty</th>
+          <th class="num">Unit price</th><th class="num">Line total</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in lines %}
+        <tr>
+          <td>
+            <div style="font-weight:550">{{ line.name }}</div>
+            <div class="prod-sku">{{ line.sku }}{% if line.aux %}
+              <span class="faint"> &middot; {{ line.aux_short }}</span>{% endif %}</div>
+            {% if line.quirks %}
+            <span class="pill pill-warn" title="{{ line.quirk_detail }}">quirk</span>
+            {% endif %}
+          </td>
+          <td class="mono">{{ line.uom }}</td>
+          <td class="num">{{ line.quantity }}</td>
+          <td class="num">
+            {{ line.unit_price }}
+            {% if line.tier_applied %}
+            <div class="faint small">tier {{ line.tier_applied }}+</div>
+            {% endif %}
+          </td>
+          <td class="num">{{ line.total }}</td>
+          <td class="num">
+            <form method="post" action="/cart/remove">
+              <input type="hidden" name="sku" value="{{ line.sku }}">
+              <button class="btn btn-secondary btn-sm" type="submit">Remove</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="grid grid-2" style="margin-top:16px;align-items:start">
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">Totals</h2></div>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Subtotal</th><td class="num">{{ totals.subtotal }}</td></tr>
+        {% for band in totals.tax_bands %}
+        <tr><th>{{ band.label }}</th><td class="num">{{ band.amount }}</td></tr>
+        {% endfor %}
+        <tr><th>Total</th><td class="num" style="font-weight:650">{{ totals.net }}</td></tr>
+      </table>
+    </div>
+    <p class="card-note" style="margin:12px 0 0">
+      cXML's <code>&lt;Total&gt;</code> on a punchout cart <strong>excludes tax
+      and shipping</strong>, so the figure that crosses the wire is
+      {{ totals.subtotal }}, not {{ totals.net }}. Treating it as tax-inclusive
+      is one of the most common reconciliation failures there is.
+    </p>
+    {% for note in totals.notes %}
+    <div class="finding finding-advisory" style="margin-top:10px">
+      <div class="finding-msg">{{ note }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">{% if session %}Return to your system{% else %}Check out{% endif %}</h2>
+    </div>
+    {% if session %}
+    <p class="card-note">
+      This posts a <code>PunchOutOrderMessage</code> back to
+      <span class="mono">{{ session.return_url_display }}</span> as a browser
+      form, which is how the protocol actually works &mdash; it is not a
+      server-to-server call.
+    </p>
+    <form method="post" action="/cart/return">
+      <div class="field">
+        <label for="encoding">Return encoding</label>
+        <select id="encoding" name="encoding">
+          <option value="cxml-urlencoded">cxml-urlencoded</option>
+          <option value="cxml-base64">cxml-base64</option>
+        </select>
+        <div class="field-hint">
+          The spec recommends base64: urlencoded must be
+          <strong>us-ascii</strong>, so any accented or non-Latin character
+          has to become a numeric entity. Choosing urlencoded with a non-ASCII
+          description is how mojibake gets into real requisitions.
+        </div>
+      </div>
+      <button class="btn" type="submit" style="width:100%;justify-content:center">
+        Return cart to {{ session.buyer_name }}
+      </button>
+    </form>
+    {% else %}
+    <p class="card-note">
+      You are browsing without a punchout session, so there is nowhere to
+      return a cart to. Start a session from the
+      <a href="/console">console</a> to get an endpoint and credentials, then
+      point your buyer system at it.
+    </p>
+    <a class="btn btn-secondary" href="/console">Open the console</a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
