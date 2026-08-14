@@ -250,6 +250,42 @@ def _oci_item(sku: str, quantity: int) -> "oci_out.OciItem":
     )
 
 
+def _oci_validate(callup) -> Response:
+    """Answer FUNCTION=VALIDATE — SRM re-checking a line it already holds.
+
+    The price is resolved AT THE SUPPLIED QUANTITY, which is the whole reason
+    QUANTITY is passed: SAP added it in OCI 3.0 "so that the catalog can
+    determine the correct price from a scale". A catalogue that ignores it and
+    returns list price is why a requisition built from a template silently
+    loses its volume discount."""
+    if not callup.hook_url:
+        return html(
+            "<h1>No HOOK_URL</h1><p>VALIDATE returns product data, so it "
+            "needs somewhere to return it to.</p>", status=400)
+
+    product = BY_SKU.get(callup.product_id or "")
+    if product is None:
+        # The spec: "If the product no longer exists, the catalog is not
+        # expected to return any data." Discontinuation is the case this
+        # exists to express, and it is expressed by SILENCE.
+        page, _ = oci_out.render_validate_response(
+            None, hook_url=callup.hook_url,
+            return_target=callup.return_target, charset=callup.charset)
+        return html(page)
+
+    try:
+        quantity = int(float(callup.quantity)) if callup.quantity else 1
+    except (TypeError, ValueError):
+        quantity = 1
+    quantity = max(quantity, 1)
+
+    item = _oci_item(product.sku, quantity)
+    page, _ = oci_out.render_validate_response(
+        item, hook_url=callup.hook_url,
+        return_target=callup.return_target, charset=callup.charset)
+    return html(page)
+
+
 @router.get("/oci/setup")
 @router.post("/oci/setup")
 def oci_setup(request: Request) -> Response:
@@ -261,6 +297,33 @@ def oci_setup(request: Request) -> Response:
     callup = oci_in.parse_callup(
         query=request.query, form=request.form() if request.method == "POST" else {},
         method=request.method)
+
+    # FUNCTION calls are answered before the HOOK_URL check, because DETAIL
+    # legitimately carries no HOOK_URL: it returns no data at all, so there is
+    # nothing to return anywhere.
+    if callup.function == "DETAIL":
+        # "With this function no data is transferred from the product catalog
+        # to the SRM Server" — it is a pure human drill-down, so the only
+        # correct response is to show the product page.
+        product = BY_SKU.get(callup.product_id or "")
+        if product is None:
+            return html(
+                "<h1>Product not found</h1><p>PRODUCTID "
+                f"<code>{callup.product_id or '(missing)'}</code> does not "
+                "match any EXT_PRODUCT_ID this catalogue has issued.</p>",
+                status=404)
+        return redirect(f"/product/{product.sku}")
+
+    if callup.function == "VALIDATE":
+        return _oci_validate(callup)
+
+    if callup.function == "BACKGROUND_SEARCH":
+        return html(
+            "<h1>Not implemented</h1><p>BACKGROUND_SEARCH is recognised but "
+            "not yet answered. Note that its requirements are the INVERSE of "
+            "VALIDATE: results must be visible and reachable without "
+            "scrolling, and the form must <strong>not</strong> auto-submit.</p>",
+            status=501)
 
     if not callup.hook_url:
         return html(

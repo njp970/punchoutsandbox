@@ -240,6 +240,47 @@ XML</code></pre>
       </tbody>
     </table>
   </div>
+
+  <h3 style="margin-top:20px">FUNCTION=VALIDATE</h3>
+  <p class="card-note">
+    SRM calls this to re-check a line it already holds &mdash; typically when
+    a requisition is built from a template and the price may have moved.
+    <code>QUANTITY</code> comes with the call, so
+    <strong>scale pricing is resolved at that quantity</strong>:
+  </p>
+  <div class="doc">
+    <pre class="doc-body"><code>{{ site_url }}/oci/setup?FUNCTION=VALIDATE&amp;PRODUCTID=MSC-1001
+    &amp;QUANTITY=1     &rarr; NEW_ITEM-PRICE[1] = 4.85
+    &amp;QUANTITY=100   &rarr; NEW_ITEM-PRICE[1] = 3.60</code></pre>
+  </div>
+  <p class="card-note" style="margin-top:12px">
+    A catalogue that ignores <code>QUANTITY</code> and returns list price is
+    why a requisition rebuilt from a template silently loses its volume
+    discount.
+  </p>
+  <div class="finding finding-advisory" style="margin-top:12px">
+    <div class="finding-top"><span class="pill pill-warn">three rules, all easy to break</span></div>
+    <div class="finding-msg">
+      The response must contain <strong>no visible elements</strong> (hidden
+      inputs only), it <strong>must auto-submit</strong> by JavaScript &mdash;
+      there is no button, because the first rule forbids one &mdash; and if
+      the product no longer exists it must return <strong>no data at
+      all</strong>, not an empty form. An empty form would tell SRM the item
+      is still valid and costs nothing.
+    </div>
+    <div class="finding-hint">
+      <code>BACKGROUND_SEARCH</code> inverts the first two: visible results,
+      no auto-submit. Same protocol, one letter apart in the parameter.
+    </div>
+  </div>
+
+  <h3 style="margin-top:20px">FUNCTION=DETAIL</h3>
+  <p class="card-note">
+    A pure human drill-down &mdash; it returns the product page and
+    <strong>no data</strong>. Needs <code>PRODUCTID</code> matching an
+    <code>EXT_PRODUCT_ID</code> the catalogue issued; no
+    <code>HOOK_URL</code> required, since nothing is returned.
+  </p>
 </div>
 
 <div class="card">
@@ -260,9 +301,11 @@ XML</code></pre>
       <tr><th>Sessions</th><td>Expire after 1 hour. Nothing is kept.</td></tr>
       <tr><th>Credentials</th><td>Not enforced. Anything is accepted and echoed back.</td></tr>
       <tr><th>OCI functions</th>
-          <td><code>DETAIL</code>, <code>VALIDATE</code> and
-              <code>BACKGROUND_SEARCH</code> are parsed and reported but not
-              yet answered.</td></tr>
+          <td><code>DETAIL</code> and <code>VALIDATE</code> are implemented.
+              <code>BACKGROUND_SEARCH</code> returns 501 &mdash; its
+              requirements are the inverse of VALIDATE and it is not built
+              yet. <code>SOURCING</code> SAP itself has never
+              implemented.</td></tr>
       <tr><th>Companies</th>
           <td>Every supplier, brand and document here is invented. Generated
               documents are test artifacts and must not be used as anything

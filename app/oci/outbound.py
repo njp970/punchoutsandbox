@@ -209,6 +209,8 @@ def render_return_form(
     caller: str = "CTLG",
     charset: str = "utf-8",
     auto_submit: bool = True,
+    visible: bool = True,
+    title: str = "Returning your cart",
 ) -> str:
     """Render the HTML form that returns the cart to SRM.
 
@@ -256,20 +258,81 @@ def render_return_form(
     submit = ('<script>document.getElementById("oci").submit()</script>'
               if auto_submit else "")
 
+    # `visible` is not cosmetic. A normal cart return is a page a human sees
+    # for a moment; a VALIDATE response is machine-only and the spec forbids
+    # visible elements outright — "the input fields must be of the type
+    # hidden". A stray submit button there is a spec violation, and a stray
+    # paragraph is enough to make SRM's scrape ambiguous.
+    chrome = ("<p>Returning your cart to SAP&hellip;</p>" if visible else "")
+    button = ('<input type="submit" value="Continue">' if visible else "")
+
     return (
         f"<!doctype html><html><head>"
         # The spec requires the catalogue to emit the charset SRM handed it in
         # `http_content_charset` — and OCI's default is ISO-8859-1, not UTF-8.
         f'<meta http-equiv="Content-Type" content="text/html; charset={escape(charset, quote=True)}">'
-        "<title>Returning your cart&hellip;</title></head>"
+        f"<title>{escape(title)}&hellip;</title></head>"
         "<body style='font:15px system-ui;padding:40px;text-align:center'>"
-        "<p>Returning your cart to SAP&hellip;</p>"
+        + chrome
         # POST, never GET: the spec warns GET "can lead to browser-dependent
         # length restrictions", and ~30 fields per line exhausts any URL
         # budget within about twenty items.
-        f'<form id="oci" method="POST" action="{escape(base, quote=True)}" '
+        + f'<form id="oci" method="POST" action="{escape(base, quote=True)}" '
         f'target="{escape(return_target, quote=True)}">'
         + "".join(inputs)
-        + '<input type="submit" value="Continue">'
-        "</form>" + submit + "</body></html>"
+        + button
+        + "</form>" + submit + "</body></html>"
     )
+
+
+def render_validate_response(
+    item: Optional[OciItem],
+    *,
+    hook_url: str,
+    return_target: str = "_top",
+    charset: str = "utf-8",
+) -> tuple[str, list[OciAdvisory]]:
+    """Answer `FUNCTION=VALIDATE`.
+
+    SRM calls this to re-check a line it already holds — typically when a
+    requisition is created from a template or an old cart, and the price may
+    have moved since. `QUANTITY` comes with the call so the catalogue can
+    resolve scale pricing, which is why the caller must pass an `item` whose
+    price is already resolved for that quantity.
+
+    THREE RULES, ALL FROM THE SPEC, ALL EASY TO BREAK:
+
+    1. **No visible elements.** "The HTML page may not contain any visible
+       elements (the input fields must be of the type hidden)."
+    2. **It MUST auto-submit** by JavaScript once loaded. Fail to, and the
+       user is stranded on a blank page with no way forward — there is no
+       button, because rule 1 forbids one.
+    3. **If the product no longer exists, return NO data.** Not an empty form,
+       not a zero price: nothing. Returning a form with no fields would tell
+       SRM the item is still valid and costs nothing.
+
+    Note how rules 1 and 2 invert for `BACKGROUND_SEARCH`, which must be
+    scrollable-free VISIBLE results and must NOT auto-submit. Same protocol,
+    opposite requirements, one letter apart in the FUNCTION parameter."""
+    if item is None:
+        # Rule 3. A bare page with no form at all.
+        return (
+            "<!doctype html><html><head>"
+            f'<meta http-equiv="Content-Type" content="text/html; '
+            f'charset={escape(charset, quote=True)}">'
+            "<title>Product unavailable</title></head><body></body></html>",
+            [],
+        )
+
+    fields, advisories = build_fields([item])
+    page = render_return_form(
+        fields, hook_url=hook_url, return_target=return_target,
+        charset=charset,
+        # Rules 1 and 2.
+        visible=False, auto_submit=True,
+        # Even the title: this page is machine-only and is NOT returning
+        # a cart, so claiming to would be wrong in the one place a human
+        # might glimpse it.
+        title="Validating",
+    )
+    return page, advisories

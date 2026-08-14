@@ -150,8 +150,80 @@ check("no cXML anywhere in an OCI return", "cxml" not in page.lower(),
 
 sessions.reset_store(None)
 
+# ============================================================================
+# FUNCTION=VALIDATE — appended after the round-trip suite above.
+# ============================================================================
+print("\n=== 12. VALIDATE: the three spec rules ===")
+sessions.reset_store(MemoryStore())
+
+st, page, _ = request("/oci/setup", "GET", query={
+    "HOOK_URL": "https://srm.example.com/hook?sid=7",
+    "FUNCTION": "VALIDATE", "PRODUCTID": "MSC-1001", "QUANTITY": "1"})
+check("VALIDATE answers 200", st == 200, f"status {st}")
+check("rule 1: no visible submit button", 'type="submit"' not in page,
+      "the spec forbids visible elements outright")
+check("rule 1: no visible text", "Returning your cart" not in page)
+check("rule 2: auto-submits by JavaScript", "submit()" in page,
+      "without a button, failing to auto-submit strands the user on a blank page")
+check("returns product data", "NEW_ITEM-DESCRIPTION[1]" in page)
+check("HOOK_URL still split", 'name="sid" value="7"' in page)
+
+print("\n=== 13. VALIDATE resolves scale pricing from QUANTITY ===")
+# MSC-1001 is 4.85 at qty 1 and 3.60 at qty 100.
+_, one, _ = request("/oci/setup", "GET", query={
+    "HOOK_URL": "https://x/h", "FUNCTION": "VALIDATE",
+    "PRODUCTID": "MSC-1001", "QUANTITY": "1"})
+_, hundred, _ = request("/oci/setup", "GET", query={
+    "HOOK_URL": "https://x/h", "FUNCTION": "VALIDATE",
+    "PRODUCTID": "MSC-1001", "QUANTITY": "100"})
+import re as _re
+p1 = _re.search(r'name="NEW_ITEM-PRICE\[1\]" value="([^"]+)"', one).group(1)
+p100 = _re.search(r'name="NEW_ITEM-PRICE\[1\]" value="([^"]+)"', hundred).group(1)
+check("qty 1 gets list price", p1 == "4.85", p1)
+check("qty 100 gets the tier price", p100 == "3.60", p100)
+check("the two differ", p1 != p100,
+      "SAP passes QUANTITY so the catalogue can resolve a scale; ignoring it "
+      "is why a requisition built from a template loses its volume discount")
+
+print("\n=== 14. VALIDATE on a discontinued product returns NOTHING ===")
+_, gone, _ = request("/oci/setup", "GET", query={
+    "HOOK_URL": "https://x/h", "FUNCTION": "VALIDATE",
+    "PRODUCTID": "MSC-DOES-NOT-EXIST", "QUANTITY": "1"})
+check("no form at all", "<form" not in gone,
+      "the spec: 'If the product no longer exists, the catalog is not "
+      "expected to return any data'")
+check("no NEW_ITEM fields", "NEW_ITEM" not in gone)
+check("not an empty form", "NEW_ITEM-PRICE" not in gone,
+      "an empty form would tell SRM the item is still valid and free")
+
+print("\n=== 15. PRICEUNIT survives VALIDATE (SAP KBA 3382679) ===")
+check("PRICEUNIT present on the validate response",
+      'name="NEW_ITEM-PRICEUNIT[1]"' in one,
+      "SAP documents PRICEUNIT being RESET during VALIDATE, so the price "
+      "changes between add-to-cart and requisition creation")
+
+print("\n=== 16. DETAIL returns no data, just the product page ===")
+st, _, raw = request("/oci/setup", "GET", query={
+    "FUNCTION": "DETAIL", "PRODUCTID": "MSC-3010"})
+check("DETAIL redirects to the product", st == 303, f"status {st}")
+check("goes to the right product",
+      raw["headers"].get("location", "").endswith("/product/MSC-3010"),
+      raw["headers"].get("location"))
+st, _, _ = request("/oci/setup", "GET", query={
+    "FUNCTION": "DETAIL", "PRODUCTID": "NOPE"})
+check("unknown PRODUCTID is a 404", st == 404)
+
+print("\n=== 17. BACKGROUND_SEARCH is honest about not being built ===")
+st, page, _ = request("/oci/setup", "GET", query={
+    "HOOK_URL": "https://x/h", "FUNCTION": "BACKGROUND_SEARCH",
+    "SEARCHSTRING": "paper"})
+check("returns 501 rather than pretending", st == 501)
+check("explains the inverted requirements", "INVERSE" in page or "inverse" in page.lower())
+
+sessions.reset_store(None)
+
 print("\n" + "=" * 62)
 if failures:
     print(f"{len(failures)} FAILED: {failures}")
     sys.exit(1)
-print("OCI round trip conforms to the SAP specification")
+print("OCI FUNCTION handling conforms to the SAP specification")
