@@ -37,6 +37,8 @@ Split for the ordinary reason: the table outlives the compute. `cdk deploy` on
 SiteStack alone must never be able to replace the table, and keeping them in
 one stack makes that a matter of remembering rather than of structure.
 """
+import os
+
 import aws_cdk as cdk
 
 from sandbox.data_stack import DataStack
@@ -51,6 +53,15 @@ stage = app.node.try_get_context("stage") or "prod"
 env = cdk.Environment(region="eu-west-2")
 
 SITE_URL = "https://punchoutsandbox.com"
+MAIL_DOMAIN = "punchoutsandbox.com"
+
+# Where the contact form and the quota alert deliver. Read from the
+# environment and NOT hardcoded, because this repository is intended to be
+# public and a personal address committed to it is a personal address
+# scraped from it. Set it in the gitignored infra/.env alongside the
+# Cloudflare credentials. Unset is a valid state: app/mailer.py then logs
+# messages instead of sending them, so nothing breaks and nothing is lost.
+CONTACT_TO = os.environ.get("SANDBOX_CONTACT_TO")
 
 data = DataStack(app, f"PunchoutSandbox-Data-{stage}", stage=stage, env=env)
 SiteStack(
@@ -58,6 +69,8 @@ SiteStack(
     stage=stage,
     table=data.table,
     site_url=SITE_URL,
+    mail_domain=MAIL_DOMAIN,
+    contact_to=CONTACT_TO,
     env=env,
 )
 

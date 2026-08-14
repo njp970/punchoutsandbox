@@ -134,3 +134,71 @@ for a Route 53 zone.
 2. Create the member account in Organizations.
 3. Verify the domain in SES and request sandbox exit early.
 4. Scaffold the CDK app + Lambda container.
+
+---
+
+## 9. Knowing when a limit is hit
+
+`ANON_DAILY_QUOTA = 25` is an admitted guess, and until now nothing recorded
+whether anyone reached it — a stranger hit the wall, saw a page, and left. A
+limit nobody observes is a limit nobody can tune. Three ways to see it now, in
+descending order of how little effort they demand:
+
+**1. Email, unprompted.** The first time an IP exhausts its daily allowance,
+`app/mailer.py` sends to `CONTACT_TO`. Capped at `ALERT_DAILY_LIMIT = 3` a
+day across all visitors, so one bad afternoon cannot bury the next real alert.
+
+The alert deliberately reports a *hashed* source tag rather than an address,
+and the distinction it exists to support is this:
+
+| What the alerts look like | What it means | What to do |
+|---|---|---|
+| Same tag, repeatedly | One person doing real work | 25 is too low — raise it |
+| A different tag each time | A scraper walking through addresses | 25 is about right |
+
+**2. The log, on demand.** Every event is one JSON line in
+`/aws/lambda/punchout-sandbox-prod`, retained three months.
+
+```bash
+aws logs tail /aws/lambda/punchout-sandbox-prod --since 7d --profile xenia --region eu-west-2 --filter-pattern '{ $.event = "anon_quota_exhausted" }'
+```
+
+For the distribution rather than the breaches — which is the more useful
+number, because it says how close people get before stopping — CloudWatch Logs
+Insights over the same group:
+
+```bash
+aws logs start-query --log-group-name /aws/lambda/punchout-sandbox-prod --start-time $(($(date +%s) - 604800)) --end-time $(date +%s) --profile xenia --region eu-west-2 --query-string 'fields @timestamp, ip | filter event = "anon_quota_exhausted" | stats count() by ip'
+```
+
+**3. Someone tells you.** The 429 page and `/contact` are both open, and
+`tests/test_contact.py` §10 pins the property that makes that work: the
+validation counter and the contact counter are separate, so a person rate
+limited out of the tool can still say so.
+
+### What is deliberately not here
+
+No CloudWatch alarm, no SNS topic, no dashboard. An alarm would need a metric
+filter, a metric, an alarm and a confirmed subscription — four resources to
+deliver the same email the Lambda already sends itself, on a service whose
+expected traffic is single-digit users per year. Revisit if that assumption
+ever turns out to be wrong; the log lines are already in the right shape for a
+metric filter to extract.
+
+## 10. Outbound mail
+
+SES, in the shared Xenia account, sending as `contact@punchoutsandbox.com` —
+its own DKIM-verified identity (`infra/scripts/setup_ses_domain.py`), not a
+borrowed Xenia domain.
+
+Reputation in SES is account-level and cannot be partitioned, so the thing
+protecting Xenia's deliverability is not the separate domain. It is that
+**the recipient is an environment variable and `mailer.send()` has no `to`
+parameter**: every message goes to one mailbox that asked for it, a stranger's
+address travels only in `Reply-To`, and no stranger can generate a bounce or a
+complaint against this account. `tests/test_contact.py` §3 asserts that
+property directly, including that nobody has added a recipient argument.
+
+The IAM grant is scoped to one identity *and* one From address by an
+`ses:FromAddress` condition — the resource ARN alone would still permit any
+address at the domain.

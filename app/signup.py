@@ -15,6 +15,9 @@ Open, always:
   /signup      obviously
   /static/*    stylesheet
   /validate    see below
+  /contact     a gate in front of "this tool is broken" would mean only
+               people who already signed up could report that signing up
+               is broken.
 
 Gated:
 
@@ -46,7 +49,8 @@ from .tenants import Tenant, store, valid_email
 from .ui.render import render
 
 #: Paths reachable with no account. Prefix match; see `is_open`.
-OPEN_PATHS = ("/docs", "/signup", "/static/", "/favicon.ico", "/validate")
+OPEN_PATHS = ("/docs", "/signup", "/static/", "/favicon.ico", "/validate",
+              "/contact")
 
 
 def is_open(path: str) -> bool:

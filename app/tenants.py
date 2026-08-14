@@ -266,39 +266,39 @@ def verify_secret(presented: Optional[str], expected: str) -> bool:
 ANON_DAILY_QUOTA = 25
 
 
-def anon_check_quota(ip: str, *, today: str) -> tuple[bool, int]:
-    """Count an anonymous operation against an IP for the day.
+def daily_counter(kind: str, key: str, limit: int, *, today: str) -> tuple[bool, int]:
+    """Count one operation against `kind|key` for the day.
 
-    Returns `(allowed, remaining)`. Fails OPEN on any storage error: a
-    rate limiter that takes the service down when DynamoDB hiccups has
-    inverted its own purpose, and the reserved-concurrency cap means the
-    downside of briefly not counting is bounded anyway.
+    Returns `(allowed, remaining)`. Three callers share this: anonymous
+    validations per IP, contact-form submissions per IP, and the daily cap on
+    alert emails to the operator. They differ only in namespace and ceiling,
+    and having one implementation means the failure semantics below are
+    decided once.
 
-    IPv6 is truncated to a /64. Handing out a fresh quota for every address in
-    a residential prefix would make the limit decorative."""
-    if not ip:
-        return True, ANON_DAILY_QUOTA
-    if ":" in ip:
-        ip = ":".join(ip.split(":")[:4]) + "::/64"
-
+    **Fails OPEN on any storage error.** A rate limiter that takes the service
+    down when DynamoDB hiccups has inverted its own purpose, and the reserved
+    concurrency cap in `site_stack.py` means the downside of briefly not
+    counting is bounded anyway. The one caller for which failing open is
+    slightly wrong is the alert cap — the cost there is a few extra emails on
+    a day AWS is already having a bad time, which is not a real cost."""
     backing = store()
     if isinstance(backing, MemoryTenants):
-        counters = getattr(backing, "_anon", None)
+        counters = getattr(backing, "_counters", None)
         if counters is None:
             counters = {}
-            backing._anon = counters
-        key = f"{ip}|{today}"
-        used = counters.get(key, 0)
-        if used >= ANON_DAILY_QUOTA:
+            backing._counters = counters
+        slot = f"{kind}|{key}|{today}"
+        used = counters.get(slot, 0)
+        if used >= limit:
             return False, 0
-        counters[key] = used + 1
-        return True, ANON_DAILY_QUOTA - used - 1
+        counters[slot] = used + 1
+        return True, limit - used - 1
 
     try:
         import boto3
         table = boto3.resource("dynamodb").Table(os.environ["SANDBOX_TABLE"])
         result = table.update_item(
-            Key={"pk": f"ANON#{ip}", "sk": today},
+            Key={"pk": f"{kind}#{key}", "sk": today},
             UpdateExpression="SET used = if_not_exists(used, :z) + :one, "
                              "expires_at = :exp",
             ExpressionAttributeValues={
@@ -310,9 +310,52 @@ def anon_check_quota(ip: str, *, today: str) -> tuple[bool, int]:
             ReturnValues="UPDATED_NEW",
         )
         used = int(result["Attributes"]["used"])
-        return used <= ANON_DAILY_QUOTA, max(0, ANON_DAILY_QUOTA - used)
+        return used <= limit, max(0, limit - used)
     except Exception:
+        return True, limit
+
+
+def normalise_ip(ip: str) -> str:
+    """Collapse an address to the unit we are willing to rate limit.
+
+    IPv6 is truncated to a /64. Handing out a fresh quota for every address in
+    a residential prefix would make the limit decorative."""
+    if ":" in ip:
+        return ":".join(ip.split(":")[:4]) + "::/64"
+    return ip
+
+
+def anon_check_quota(ip: str, *, today: str) -> tuple[bool, int]:
+    """Count an anonymous validation against an IP for the day."""
+    if not ip:
         return True, ANON_DAILY_QUOTA
+    return daily_counter("ANON", normalise_ip(ip), ANON_DAILY_QUOTA, today=today)
+
+
+#: Contact-form submissions per IP per day. Low on purpose: a real person
+#: sends one message, and three is room to correct a typo and resend. Anything
+#: above that is a script, and a script that gets three attempts is not worth
+#: writing.
+CONTACT_DAILY_LIMIT = 3
+
+#: Ceiling on alert emails to the operator in a day, across ALL visitors. The
+#: alert exists to tell us the 25/day cap is being reached; it does not need to
+#: tell us once per offender. Without this, one bad afternoon fills a mailbox
+#: and the next real alert is buried under it.
+ALERT_DAILY_LIMIT = 3
+
+
+def contact_check_quota(ip: str, *, today: str) -> tuple[bool, int]:
+    if not ip:
+        return True, CONTACT_DAILY_LIMIT
+    return daily_counter("CONTACT", normalise_ip(ip), CONTACT_DAILY_LIMIT,
+                         today=today)
+
+
+def alert_budget(*, today: str) -> bool:
+    """True when we may still send an operator alert today."""
+    allowed, _ = daily_counter("ALERT", "global", ALERT_DAILY_LIMIT, today=today)
+    return allowed
 
 
 def client_ip(headers: dict) -> str:

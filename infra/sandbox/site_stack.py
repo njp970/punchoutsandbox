@@ -79,12 +79,16 @@ someone who has already seen a legitimate request's headers. For a free
 sandbox serving synthetic data about invented companies, that is the right
 amount of security. Do not carry this pattern into Xenia.
 """
+from __future__ import annotations
+
 import os
 
 from aws_cdk import (
-    CfnOutput, Duration, Stack,
+    CfnOutput, Duration, RemovalPolicy, Stack,
     aws_dynamodb as ddb,
+    aws_iam as iam,
     aws_lambda as lambda_,
+    aws_logs as logs,
 )
 from constructs import Construct
 
@@ -99,9 +103,28 @@ class SiteStack(Stack):
         self, scope: Construct, cid: str, *, stage: str,
         table: ddb.Table,
         site_url: str,
+        mail_domain: str,
+        contact_to: str | None,
         **kwargs,
     ):
         super().__init__(scope, cid, **kwargs)
+
+        # Owned explicitly rather than left to Lambda's implicit creation, so
+        # the retention is ours. The implicit group never expires, which is
+        # how a product with no revenue acquires a CloudWatch bill. Three
+        # months answers the question these logs exist for — "has anyone been
+        # hitting the anonymous /validate limit this quarter" (app/telemetry.py)
+        # — and holds nothing longer than that.
+        #
+        # NOTE: if a group of this name already exists from an earlier deploy,
+        # CloudFormation will refuse to create it. Delete it first; there is
+        # nothing in it worth keeping.
+        log_group = logs.LogGroup(
+            self, "SandboxLogs",
+            log_group_name=f"/aws/lambda/punchout-sandbox-{stage}",
+            retention=logs.RetentionDays.THREE_MONTHS,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
 
         self.fn = lambda_.Function(
             self, "Sandbox",
@@ -124,6 +147,7 @@ class SiteStack(Stack):
             # 512MB the same request bills roughly the same total (half the
             # rate, twice the duration) while feeling twice as slow to a human.
             memory_size=1024,
+            log_group=log_group,
             # THE SETTING THAT MAKES SHARING XENIA'S ACCOUNT SAFE.
             #
             # Account-level Lambda concurrency defaults to 1000 and is shared
@@ -146,6 +170,13 @@ class SiteStack(Stack):
                 "SANDBOX_TABLE": table.table_name,
                 "STAGE": stage,
                 "SITE_URL": site_url,
+                # Outbound mail. Both must be set for anything to send —
+                # app/mailer.py treats a missing value as "not configured"
+                # and writes the message to the log instead of losing it, so
+                # a stack deployed before SES identity verification finishes
+                # degrades quietly rather than 500ing a contact form.
+                "MAIL_FROM": f"contact@{mail_domain}",
+                **({"CONTACT_TO": contact_to} if contact_to else {}),
                 # EDGE_SHARED_SECRET is deliberately ABSENT here — set it
                 # post-deploy. app/http.py treats "unset" as "edge enforcement
                 # off", which is what you want on a fresh stack that has no
@@ -155,6 +186,26 @@ class SiteStack(Stack):
         )
 
         table.grant_read_write_data(self.fn)
+
+        # ---- Outbound mail -------------------------------------------------
+        #
+        # Scoped to ONE identity and ONE From address. This SES account is
+        # shared with Xenia's production transactional mail, where sending
+        # reputation, bounce rate and complaint rate are all account-level
+        # facts — so a permission broad enough to send as a Xenia domain would
+        # put Xenia's deliverability behind a free tool's public form.
+        #
+        # The `ses:FromAddress` condition is the part that matters. The
+        # resource ARN alone would still allow any address at the domain.
+        self.fn.add_to_role_policy(iam.PolicyStatement(
+            actions=["ses:SendEmail", "ses:SendRawEmail"],
+            resources=[
+                f"arn:aws:ses:{self.region}:{self.account}:identity/{mail_domain}"
+            ],
+            conditions={
+                "StringEquals": {"ses:FromAddress": f"contact@{mail_domain}"}
+            },
+        ))
 
         self.function_url = self.fn.add_function_url(
             auth_type=lambda_.FunctionUrlAuthType.NONE,

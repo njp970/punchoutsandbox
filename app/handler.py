@@ -22,7 +22,8 @@ from datetime import datetime, timezone
 from decimal import Decimal as D
 from typing import Optional
 
-from . import inspector, sessions, setup_request, signup, storefront, tenants
+from . import (contact, inspector, mailer, sessions, setup_request, signup,
+               storefront, telemetry, tenants)
 from .catalogue.data import BY_SKU, search
 from .catalogue.taxonomy import normalise_uom
 from .cxml.punchout import (CartItem, build_cancel, build_empty_cart,
@@ -419,6 +420,12 @@ def signup_route(request: Request) -> Response:
     return signup.view_signup(request)
 
 
+@router.get("/contact")
+@router.post("/contact")
+def contact_route(request: Request) -> Response:
+    return contact.view_contact(request)
+
+
 @router.get("/docs")
 def docs(request: Request) -> Response:
     session, cart = get_session(request)
@@ -483,6 +490,33 @@ def handler(event: dict, context=None) -> dict:
             allowed, remaining = tenants.anon_check_quota(
                 tenants.client_ip(request.headers), today=signup.today())
             if not allowed:
+                # The ONLY way we learn that 25/day is the wrong number. It is
+                # an admitted guess (tenants.ANON_DAILY_QUOTA), and a limit
+                # nobody is told about is a limit nobody can tune — the
+                # visitor sees a page and leaves. The log line is the record;
+                # the email is so it does not need to be gone looking for.
+                ip = tenants.client_ip(request.headers)
+                telemetry.event("anon_quota_exhausted",
+                                ip=telemetry.ip_tag(ip),
+                                limit=tenants.ANON_DAILY_QUOTA)
+                if tenants.alert_budget(today=signup.today()):
+                    mailer.send(
+                        subject="PunchOut Sandbox: anonymous validation limit hit",
+                        body=(
+                            f"A visitor reached the {tenants.ANON_DAILY_QUOTA}"
+                            "/day anonymous limit on /validate.\n\n"
+                            f"Source (hashed): {telemetry.ip_tag(ip)}\n"
+                            f"Date           : {signup.today()}\n\n"
+                            "If this keeps happening to the same tag, it is one "
+                            "person doing real work and the number is too low. "
+                            "If it is a different tag every time, it is a "
+                            "scraper and the number is about right.\n\n"
+                            "Change it in app/tenants.py (ANON_DAILY_QUOTA).\n"
+                            "At most "
+                            f"{tenants.ALERT_DAILY_LIMIT} of these are sent a day.\n"
+                        ),
+                        kind="quota-alert",
+                    )
                 return html(render(
                     "gate.html", nav="signup", wanted="/validate",
                     rate_limited=True), status=429).to_lambda()

@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Contact — PunchOut Sandbox{% endblock %}
+{% block content %}
+
+<div style="max-width:56ch">
+  <h1>Get in touch</h1>
+  <p class="muted" style="margin-top:-4px">
+    One person reads this. There is no ticket queue and no autoresponder.
+  </p>
+
+  {% if sent %}
+  <div class="verdict-lg verdict-pass" style="margin:16px 0">
+    <div class="glyph" aria-hidden="true">&#10003;</div>
+    <div>
+      <div class="headline">Sent</div>
+      <div class="muted">
+        It went to a real mailbox. If you asked something that needs an
+        answer, you will get one &mdash; from a person, when they are awake.
+      </div>
+    </div>
+  </div>
+
+  <p class="muted">
+    <a href="/validate">Back to the validator</a> &middot;
+    <a href="/docs">Docs</a>
+  </p>
+
+  {% else %}
+
+  {% if error %}
+  <div class="verdict-lg verdict-fail" style="margin:16px 0">
+    <div class="glyph" aria-hidden="true">&#10005;</div>
+    <div><div class="headline">{{ error }}</div></div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <form method="post" action="/contact">
+      {#
+        The honeypot. Hidden from sight, hidden from the accessibility tree,
+        and taken out of the tab order — a person should never reach it by any
+        route, including a screen reader or a keyboard. A bot filling every
+        input it finds trips it.
+      #}
+      <div style="position:absolute;left:-9999px" aria-hidden="true">
+        <label for="{{ honeypot }}">Website</label>
+        <input type="text" id="{{ honeypot }}" name="{{ honeypot }}"
+               tabindex="-1" autocomplete="off">
+      </div>
+
+      <div class="field">
+        <label for="topic">What is this about</label>
+        <select id="topic" name="topic">
+          {% for key, label in topics %}
+          <option value="{{ key }}" {{ 'selected' if values.topic == key }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="email">Your email</label>
+        <input type="email" id="email" name="email" value="{{ values.email|default('') }}"
+               required placeholder="you@company.com">
+        <div class="field-hint">
+          Used to reply to you and nothing else. It is not added to a list,
+          because there is no list.
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="name">Your name <span class="faint">(optional)</span></label>
+        <input type="text" id="name" name="name" value="{{ values.name|default('') }}">
+      </div>
+
+      <div class="field">
+        <label for="message">Message</label>
+        <textarea id="message" name="message" rows="8" required
+                  placeholder="If something is failing, paste the bit that fails. Document snippets are fine — this reaches one inbox.">{{ values.message|default('') }}</textarea>
+      </div>
+
+      <button class="btn" type="submit" style="width:100%;justify-content:center">
+        Send
+      </button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">The most useful thing you can send</h2></div>
+    <p class="card-note" style="margin:0 0 10px">
+      <strong>A platform limit we have got wrong.</strong> This sandbox exists
+      because cXML itself imposes almost no length limits &mdash; every real
+      limit is imposed by a buyer platform, and those are not published
+      anywhere. If Coupa truncated your description at 254 characters or Ariba
+      dropped a leading zero off a part number, that is a fact nobody has
+      written down, and it belongs in the conformance checks here.
+    </p>
+    <p class="card-note" style="margin:0">
+      Second most useful: a document this validator judged wrongly. Paste it
+      in. Being confidently wrong is the one failure mode a validator cannot
+      afford.
+    </p>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
