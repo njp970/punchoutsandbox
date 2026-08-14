@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Orders — PunchOut Sandbox{% endblock %}
+{% block content %}
+
+<h1>Purchase orders</h1>
+<p class="muted" style="margin-top:-4px;max-width:70ch">
+  Orders your buyer system has sent to this sandbox. Open one to generate a
+  confirmation, a ship notice or an invoice against it &mdash; and to send
+  those back to your own endpoint.
+</p>
+
+{% if not orders %}
+<div class="card">
+  <div class="card-header"><h2 class="card-title">Nothing here yet</h2></div>
+  <p class="card-note" style="margin:0 0 14px">
+    POST an <code>OrderRequest</code> to the address below, authenticating with
+    the credentials on your account. Everything that parses is stored, however
+    non-conformant &mdash; a document being wrong is the usual reason for
+    sending it here.
+  </p>
+  <div class="copyfield">{{ site_url }}/order</div>
+  {% if tenant %}
+  <div class="table-wrap mt">
+    <table>
+      <tr><th>To/Credential/Identity</th><td><code>{{ tenant.sandbox_id }}</code></td></tr>
+      <tr><th>Sender/Credential/SharedSecret</th><td><code>{{ tenant.shared_secret }}</code></td></tr>
+    </table>
+  </div>
+  {% endif %}
+  <p class="card-note" style="margin:14px 0 0">
+    The response repeats everything we noticed about your document in the
+    <code>Status</code> text &mdash; line count, whether
+    <code>lineNumber</code> was present, whether your header
+    <code>Total</code> reconciles with the lines. That lands in your own
+    transaction log, which is where you will actually look.
+  </p>
+</div>
+{% else %}
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Order</th><th>Buyer</th><th>Lines</th><th>Total</th>
+          <th>Conformance</th><th>Received</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for order in orders %}
+        <tr>
+          <td><a href="/orders/{{ order.ref }}"><code>{{ order.order_id }}</code></a></td>
+          <td>{{ order.buyer_identity or "—" }}</td>
+          <td class="num">{{ order.line_count }}</td>
+          <td class="num">{{ order.currency }} {{ order.total or "—" }}</td>
+          <td>
+            {% if order.error_count %}
+            <span class="pill pill-fail">{{ order.error_count }} error{{ "s" if order.error_count != 1 }}</span>
+            {% else %}
+            <span class="pill pill-pass">valid</span>
+            {% endif %}
+            {% if order.advisory_count %}
+            <span class="pill pill-warn">{{ order.advisory_count }}</span>
+            {% endif %}
+          </td>
+          <td class="faint">{{ order.received_at|int }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="card-note" style="margin:12px 0 0">
+    Orders are kept for seven days. A punchout session lasts an hour because it
+    is someone shopping; an order is a flow you work through over days, and
+    losing it halfway would be worse than not offering it.
+  </p>
+</div>
+{% endif %}
+
+{% endblock %}

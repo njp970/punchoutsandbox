@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}{{ order.order_id }} — PunchOut Sandbox{% endblock %}
+{% block content %}
+
+<h1><code>{{ order.order_id }}</code></h1>
+<p class="muted" style="margin-top:-4px">
+  From {{ order.buyer_identity or "an unidentified buyer" }} &middot;
+  {{ order.line_count }} line{{ "s" if order.line_count != 1 }} &middot;
+  <a href="/orders/{{ order.ref }}/source">view the document as sent</a>
+</p>
+
+{% if problems %}
+<div class="verdict-lg verdict-fail" style="margin:16px 0">
+  <div class="glyph" aria-hidden="true">&#10005;</div>
+  <div>
+    <div class="headline">Nothing was generated</div>
+    <div class="muted">{{ problems }}</div>
+  </div>
+</div>
+{% endif %}
+
+{% if order.observations %}
+<div class="card">
+  <div class="card-header"><h2 class="card-title">What we noticed about this order</h2></div>
+  {% for note in order.observations %}
+  <div class="finding finding-advisory">
+    <div class="finding-msg">{{ note }}</div>
+  </div>
+  {% endfor %}
+  <p class="card-note" style="margin:12px 0 0">
+    These are facts about the <em>order</em>, not about the XML. The document
+    can be perfectly valid and still say something that will cause an argument
+    at reconciliation. Nothing here has been recalculated or repaired.
+  </p>
+</div>
+{% endif %}
+
+<div class="grid">
+  <div class="stat">
+    <div class="stat-label">Header total</div>
+    <div class="stat-value">{{ order.currency }} {{ order.total or "—" }}</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Sum of lines</div>
+    <div class="stat-value">{{ order.currency }} {{ parsed.line_subtotal }}</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Conformance</div>
+    <div class="stat-value">
+      {% if order.error_count %}{{ order.error_count }} error{{ "s" if order.error_count != 1 }}
+      {% else %}valid{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2 class="card-title">Lines</h2></div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Part</th><th>Description</th><th>Qty</th>
+            <th>UOM</th><th>Unit price</th><th>Subtotal</th></tr>
+      </thead>
+      <tbody>
+        {% for line in parsed.lines %}
+        <tr>
+          <td class="num">
+            {{ line.line_number }}
+            {% if line.line_number_inferred %}
+            <span class="pill pill-warn" title="ItemOut/@lineNumber was absent; inferred from position">inferred</span>
+            {% endif %}
+          </td>
+          <td><code>{{ line.supplier_part_id or "—" }}</code></td>
+          <td>{{ line.description or "—" }}</td>
+          <td class="num">{{ line.quantity }}</td>
+          <td>{{ line.unit_of_measure or "—" }}</td>
+          <td class="num">
+            {% if line.unit_price is none %}<span class="faint">absent</span>
+            {% else %}{{ line.currency }} {{ line.unit_price }}{% endif %}
+          </td>
+          <td class="num">{{ line.subtotal }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2 class="card-title">Send a document back</h2></div>
+  <p class="card-note" style="margin:0 0 16px">
+    Each of these is generated against this order, validated against the real
+    DTD, and shown to you before it goes anywhere. Sending is a separate,
+    deliberate step.
+  </p>
+
+  <div class="btn-row" style="align-items:flex-start;gap:24px;flex-wrap:wrap">
+    <form method="post" action="/orders/{{ order.ref }}/confirm" style="min-width:260px">
+      <div class="field">
+        <label for="header_type">Confirmation</label>
+        <select id="header_type" name="header_type">
+          {% for value, label in header_types %}
+          <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+        <div class="field-hint">
+          The header type constrains which line statuses are legal, and the DTD
+          cannot express that rule &mdash; we check it before building.
+        </div>
+      </div>
+      <button class="btn btn-sm" type="submit">Generate confirmation</button>
+    </form>
+
+    <form method="post" action="/orders/{{ order.ref }}/ship" style="min-width:260px">
+      <div class="field">
+        <label for="carrier">Ship notice &mdash; carrier (SCAC)</label>
+        <input type="text" id="carrier" name="carrier" value="UPSN">
+        <div class="field-hint">A tracking number is generated for you.</div>
+      </div>
+      <button class="btn btn-sm" type="submit">Generate ship notice</button>
+    </form>
+
+    <form method="post" action="/orders/{{ order.ref }}/invoice" style="min-width:260px">
+      <div class="field">
+        <label for="country">Invoice &mdash; tax jurisdiction</label>
+        <select id="country" name="country">
+          <option value="">From the order's ShipTo</option>
+          {% for code, j in jurisdictions|dictsort %}
+          <option value="{{ code }}">{{ code }} — {{ j.name }}{% if not j.verified %} (unverified){% endif %}</option>
+          {% endfor %}
+        </select>
+        <div class="field-hint">
+          Cross-border rules are applied and explained, not just a rate looked up.
+        </div>
+      </div>
+      <button class="btn btn-sm" type="submit">Generate invoice</button>
+    </form>
+  </div>
+</div>
+
+{% if order.documents %}
+<div class="card">
+  <div class="card-header"><h2 class="card-title">Documents</h2></div>
+
+  {% for doc in order.documents %}
+  <div class="doc" {% if doc.doc_id == highlight %}style="outline:2px solid var(--accent, #6b8afd)"{% endif %}>
+    <div class="doc-bar">
+      <strong>{{ doc.kind }}</strong>
+      {% if doc.state == "delivered" %}
+      <span class="pill pill-pass">delivered</span>
+      {% elif doc.state == "rejected" %}
+      <span class="pill pill-warn">rejected by buyer</span>
+      {% elif doc.state == "failed" %}
+      <span class="pill pill-fail">not delivered</span>
+      {% else %}
+      <span class="pill pill-idle">generated, not sent</span>
+      {% endif %}
+      <span class="faint">{{ doc.payload_id }}</span>
+      <a class="btn btn-sm btn-secondary" href="/orders/{{ order.ref }}/doc/{{ doc.doc_id }}">View XML</a>
+    </div>
+
+    {% if doc.delivered is not none %}
+    <div class="doc-body">
+      <div class="table-wrap">
+        <table>
+          <tr><th>Endpoint</th><td><code>{{ doc.endpoint }}</code></td></tr>
+          <tr><th>HTTP</th>
+              <td>{% if doc.http_status %}{{ doc.http_status }}{% else %}no response{% endif %}
+                  <span class="faint">{{ doc.duration_ms }}ms</span></td></tr>
+          {% if doc.cxml_status %}
+          <tr><th>cXML Status</th><td><code>{{ doc.cxml_status }}</code></td></tr>
+          {% endif %}
+          {% if doc.failure_reason %}
+          <tr><th>Reason</th><td>{{ doc.failure_reason }}</td></tr>
+          {% endif %}
+        </table>
+      </div>
+
+      {% for note in doc.observations %}
+      <div class="finding finding-advisory"><div class="finding-msg">{{ note }}</div></div>
+      {% endfor %}
+
+      {% if doc.response_excerpt %}
+      <details class="mt">
+        <summary class="muted">Response body</summary>
+        <pre class="doc-body"><code>{{ doc.response_excerpt }}</code></pre>
+      </details>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <form method="post" action="/orders/{{ order.ref }}/send/{{ doc.doc_id }}"
+          class="btn-row" style="margin-top:10px">
+      <input type="text" name="endpoint" value="{{ endpoint }}"
+             placeholder="https://your-system.example.com/cxml/inbox"
+             style="flex:1;min-width:280px">
+      <button class="btn btn-sm" type="submit">
+        {% if doc.delivered is none %}Send{% else %}Send again{% endif %}
+      </button>
+    </form>
+  </div>
+  {% endfor %}
+
+  <p class="card-note" style="margin:12px 0 0">
+    One attempt per press, no automatic retries. cXML tells suppliers to retry
+    a transport failure hourly for ten hours &mdash; right for production, wrong
+    here: you are trying to <em>see</em> the failure, and a retry that
+    eventually succeeds hides the flakiness you came to find.
+  </p>
+</div>
+{% endif %}
+
+{% endblock %}

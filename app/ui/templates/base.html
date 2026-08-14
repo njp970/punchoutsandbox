@@ -40,12 +40,14 @@
       <a href="/cart" class="{{ 'active' if nav == 'cart' }}">
         Cart{% if cart_count %} <span class="pill pill-info">{{ cart_count }}</span>{% endif %}
       </a>
+      <a href="/orders" class="{{ 'active' if nav == 'orders' }}">Orders</a>
 
       <div class="nav-label">Test</div>
       <a href="/console" class="{{ 'active' if nav == 'console' }}">Console</a>
       <a href="/sessions" class="{{ 'active' if nav == 'sessions' }}">Sessions</a>
       <a href="/validate" class="{{ 'active' if nav == 'validate' }}">Validate a document</a>
       <a href="/docs" class="{{ 'active' if nav == 'docs' }}">Docs</a>
+      <a href="/settings" class="{{ 'active' if nav == 'settings' }}">Settings</a>
       <a href="/contact" class="{{ 'active' if nav == 'contact' }}">Contact</a>
     </nav>
 

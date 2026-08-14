@@ -332,10 +332,80 @@ XML</code></pre>
 </div>
 
 <div class="card">
+  <div class="card-header"><h2 class="card-title">8. The order flow — PO, confirmation, ship notice, invoice</h2></div>
+  <p class="card-note">
+    A punchout ends with a requisition, not an order. What happens next is
+    where most integrations actually break, and where nobody can test: your
+    buyer system turns the cart into a purchase order and sends it to the
+    supplier, and the supplier sends back three documents that your system
+    either ingests silently or drops silently.
+  </p>
+
+  <p class="card-note"><strong>Send us the order.</strong> POST an
+    <code>OrderRequest</code> to:</p>
+  <div class="copyfield">{{ site_url }}/order</div>
+  <p class="card-note">
+    Same credentials as the punchout endpoint &mdash; your identity in
+    <code>To/Credential/Identity</code>, your secret in
+    <code>Sender/Credential/SharedSecret</code>. Everything that parses is
+    accepted, however non-conformant; a document being wrong is the usual
+    reason for sending it here.
+  </p>
+  <p class="card-note">
+    The response puts everything we noticed in the <code>Status</code> text:
+    line count, whether <code>lineNumber</code> was present, whether your
+    header <code>Total</code> reconciles with the sum of the lines. That lands
+    in your own transaction log, which is where you will actually look.
+  </p>
+
+  <p class="card-note"><strong>Then send documents back.</strong> On
+    <a href="/orders">the order screen</a> you can generate:</p>
+  <div class="table-wrap">
+    <table>
+      <tr><th>ConfirmationRequest</th>
+          <td>Accept, reject, backorder, or accept-with-changes. The header
+              type constrains which line statuses are legal and the DTD cannot
+              express that rule &mdash; we check it before building, because a
+              buyer rejects the combination with no useful explanation.</td></tr>
+      <tr><th>ShipNoticeRequest</th>
+          <td>With carrier, tracking number and service level. Partial
+              shipments supported; the same order line twice in one notice is
+              refused, as the spec requires.</td></tr>
+      <tr><th>InvoiceDetailRequest</th>
+          <td>Priced from the order, taxed in the ShipTo jurisdiction across
+              27 countries, with the reasoning shown rather than just a
+              rate.</td></tr>
+    </table>
+  </div>
+  <p class="card-note">
+    Each is validated against the real DTD and shown to you before it goes
+    anywhere. Sending is a separate, deliberate step: set your cXML inbox in
+    <a href="/settings">Settings</a> and press send.
+  </p>
+  <p class="card-note">
+    <strong>One attempt per press, no automatic retries.</strong> cXML tells
+    suppliers to retry a transport failure hourly for ten hours. That is right
+    for production and wrong here &mdash; you are trying to <em>see</em> the
+    failure, and a retry that eventually succeeds hides the flakiness you came
+    to find.
+  </p>
+  <p class="card-note">
+    We will only POST to <code>https</code> on port 443, to a hostname whose
+    every resolved address is public, connecting to the exact address we
+    checked, following no redirects, with a valid certificate. "Take a URL from
+    a stranger and POST to it" is the definition of server-side request
+    forgery, and this sandbox runs inside someone else's AWS account.
+    <a href="/settings">Settings</a> lists the rules in full.
+  </p>
+</div>
+
+<div class="card">
   <div class="card-header"><h2 class="card-title">Limits, honestly</h2></div>
   <div class="table-wrap">
     <table>
       <tr><th>Sessions</th><td>Expire after 1 hour. Nothing is kept.</td></tr>
+      <tr><th>Orders</th><td>Kept 7 days. A session is someone shopping; an
+          order is a flow you work through over days.</td></tr>
       <tr><th>Daily limit</th><td>25 validations without an account, 500 with
           one. If you hit either legitimately, say so &mdash; it is a number,
           not a policy.</td></tr>

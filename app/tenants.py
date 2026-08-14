@@ -88,6 +88,11 @@ class Tenant:
     #: Rolling daily counter, reset when `quota_day` changes.
     used_today: int = 0
     quota_day: str = ""
+    #: Where this account's fulfilment documents are POSTed. Empty until the
+    #: user sets one, and validated by `delivery.vet_url` before it is stored —
+    #: an unreachable or refused URL is rejected while they are still looking
+    #: at the field, rather than at 2am when an invoice fails to send.
+    buyer_endpoint: str = ""
 
     def __post_init__(self) -> None:
         if not self.expires_at:
@@ -180,6 +185,7 @@ class DynamoTenants:
             expires_at=float(item.get("expires_at", 0)),
             used_today=int(item.get("used_today", 0)),
             quota_day=item.get("quota_day", ""),
+            buyer_endpoint=item.get("buyer_endpoint", ""),
         )
         return None if t.expired else t
 
@@ -205,6 +211,7 @@ class DynamoTenants:
             "expires_at": int(tenant.expires_at),
             "used_today": tenant.used_today,
             "quota_day": tenant.quota_day,
+            "buyer_endpoint": tenant.buyer_endpoint,
         })
         self.table.put_item(Item={
             "pk": f"SANDBOXID#{tenant.sandbox_id}", "sk": "POINTER",

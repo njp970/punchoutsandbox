@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Order not found — PunchOut Sandbox{% endblock %}
+{% block content %}
+<div style="max-width:54ch">
+  <h1>No such order</h1>
+  <p class="muted">
+    Either it expired &mdash; orders are kept seven days &mdash; or it belongs
+    to a different account. Orders are scoped to the account that received
+    them, so a link shared between two accounts will not resolve.
+  </p>
+  <p><a class="btn btn-secondary" href="/orders">Back to orders</a></p>
+</div>
+{% endblock %}

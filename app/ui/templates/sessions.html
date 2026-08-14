@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Sessions — PunchOut Sandbox{% endblock %}
+{% block content %}
+
+<h1>Punchout sessions</h1>
+<p class="muted" style="margin-top:-4px;max-width:70ch">
+  Every session this sandbox currently has open. Sessions last an hour and are
+  swept automatically; an abandoned cart costs nothing to forget.
+</p>
+
+{% if not sessions %}
+<div class="card">
+  <div class="card-header"><h2 class="card-title">No open sessions</h2></div>
+  <p class="card-note" style="margin:0">
+    POST a <code>PunchOutSetupRequest</code> to <code>/punchout/setup</code>,
+    or <a href="/console">open a demo session</a> to see the storefront in
+    punchout mode without standing up a buyer system.
+  </p>
+</div>
+{% else %}
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Buyer</th><th>Protocol</th><th>Operation</th><th>Cart</th>
+            <th>Returns to</th><th>Expires in</th></tr>
+      </thead>
+      <tbody>
+        {% for s in sessions %}
+        <tr>
+          <td>{{ s.buyer_name }}</td>
+          <td><span class="pill pill-info">{{ s.protocol }}</span></td>
+          <td>{{ s.operation }}</td>
+          <td class="num">{{ s.cart|length }}</td>
+          <td class="faint" style="max-width:32ch;overflow-wrap:anywhere">
+            {{ s.return_url_display }}
+          </td>
+          <td class="num">{{ (s.seconds_remaining // 60) }}m</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="card-note" style="margin:12px 0 0">
+    Sessions are shown to everyone, not scoped to your account. A session is
+    created by a machine POST that may authenticate as a different account than
+    your browser is signed in as &mdash; scoping the list would hide exactly
+    the session you are trying to debug. Nothing here is private: a buyer name,
+    a cart of invented products, and a return URL the buyer published.
+  </p>
+</div>
+{% endif %}
+
+{% endblock %}

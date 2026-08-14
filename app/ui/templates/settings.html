@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Settings — PunchOut Sandbox{% endblock %}
+{% block content %}
+
+<div style="max-width:60ch">
+  <h1>Settings</h1>
+
+  {% if saved %}
+  <div class="verdict-lg verdict-pass" style="margin:16px 0">
+    <div class="glyph" aria-hidden="true">&#10003;</div>
+    <div><div class="headline">Saved</div></div>
+  </div>
+  {% endif %}
+
+  {% if error %}
+  <div class="verdict-lg verdict-fail" style="margin:16px 0">
+    <div class="glyph" aria-hidden="true">&#10005;</div>
+    <div>
+      <div class="headline">That endpoint was refused</div>
+      <div class="muted">{{ error }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">Your cXML inbox</h2></div>
+    <p class="card-note" style="margin:0 0 14px">
+      Where confirmations, ship notices and invoices are POSTed. Checked when
+      you save it, not just when you send &mdash; a URL this sandbox will
+      refuse should be refused while you are still looking at the field.
+    </p>
+    <form method="post" action="/settings">
+      <div class="field">
+        <label for="endpoint">Endpoint URL</label>
+        <input type="url" id="endpoint" name="endpoint" value="{{ endpoint }}"
+               placeholder="https://your-system.example.com/cxml/inbox">
+        <div class="field-hint">Leave empty to clear it.</div>
+      </div>
+      <button class="btn" type="submit">Save</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">What we will not POST to, and why</h2></div>
+    <div class="table-wrap">
+      <table>
+        <tr><th>https only, port 443</th>
+            <td>Your shared secret travels in the document body. Plain HTTP
+                would publish it to every hop on the path.</td></tr>
+        <tr><th>Public addresses only</th>
+            <td>Every address your hostname resolves to must be globally
+                routable &mdash; not loopback, private or link-local.</td></tr>
+        <tr><th>The address is pinned</th>
+            <td>We connect to the exact address we checked, while still
+                presenting your hostname for TLS. Checking DNS and then
+                connecting by name leaves a rebinding window.</td></tr>
+        <tr><th>No redirects</th>
+            <td>A 302 to an internal address would walk past every check above.
+                A redirect is reported to you as the response it is.</td></tr>
+        <tr><th>Valid certificate</th>
+            <td>Self-signed certificates are refused. A sandbox that skipped
+                verification would teach the wrong lesson about a channel
+                carrying secrets.</td></tr>
+      </table>
+    </div>
+    <p class="card-note" style="margin:12px 0 0">
+      This is not paranoia about your endpoint. "Take a URL from a stranger and
+      POST to it" is the textbook definition of server-side request forgery,
+      and this sandbox runs inside someone else's AWS account.
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">Your credentials</h2></div>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Identity</th><td><code>{{ tenant.sandbox_id }}</code></td></tr>
+        <tr><th>Shared secret</th><td><code>{{ tenant.shared_secret }}</code></td></tr>
+        <tr><th>Order inbox</th><td><code>{{ site_url }}/order</code></td></tr>
+        <tr><th>Punchout setup</th><td><code>{{ site_url }}/punchout/setup</code></td></tr>
+        <tr><th>OCI call-up</th><td><code>{{ site_url }}/oci/setup</code></td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

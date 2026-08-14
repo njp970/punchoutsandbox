@@ -202,3 +202,31 @@ property directly, including that nobody has added a recipient argument.
 The IAM grant is scoped to one identity *and* one From address by an
 `ses:FromAddress` condition — the resource ARN alone would still permit any
 address at the domain.
+
+## 11. Outbound delivery, and why it is the riskiest thing here
+
+`/order` accepts a purchase order; the order screen generates confirmations,
+ship notices and invoices; and `app/delivery.py` POSTs them to a URL the user
+supplied. That last step is the only place this application makes an outbound
+request on someone else's instruction, which makes it a textbook SSRF
+primitive unless constrained.
+
+| Constraint | Closes |
+|---|---|
+| Account required | Anonymous abuse; makes it attributable |
+| https, port 443 only | Protocol smuggling, internal port scanning |
+| Every resolved address must be global unicast | Loopback, private ranges, `169.254.169.254` |
+| Connection pinned to the vetted address | DNS rebinding — checked one address, connected to another |
+| No redirects followed | A 302 to an internal address bypassing all of the above |
+| Certificate verified | A sandbox teaching people to skip TLS verification on a channel carrying shared secrets |
+
+Two things bound the damage independently: the Lambda is **not in a VPC**, so
+it has no route to anything private in the account, and **Lambda has no
+instance metadata service** to steal credentials from. Neither is a reason to
+relax the list — they are why a mistake in it would be survivable.
+
+**No automatic retries**, which reverses the cXML spec deliberately. The spec
+tells suppliers to retry a transport failure hourly for ten hours. Right for
+production, wrong for a sandbox: the user is trying to *see* the failure, and
+automatic retries would also make any delivery endpoint a modest amplifier —
+one submission, ten outbound requests.

@@ -21,9 +21,11 @@ import secrets
 from datetime import datetime, timezone
 from decimal import Decimal as D
 from typing import Optional
+from urllib.parse import quote
 
-from . import (contact, inspector, mailer, sessions, setup_request, signup,
-               storefront, telemetry, tenants)
+from . import (contact, delivery, inspector, mailer, order_request, orders,
+               orderflow, sessions, setup_request, signup, storefront,
+               telemetry, tenants)
 from .catalogue.data import BY_SKU, search
 from .catalogue.taxonomy import normalise_uom
 from .cxml.punchout import (CartItem, build_cancel, build_empty_cart,
@@ -426,6 +428,200 @@ def contact_route(request: Request) -> Response:
     return contact.view_contact(request)
 
 
+# --------------------------------------------------------------------------- #
+# Orders — the fulfilment flow
+# --------------------------------------------------------------------------- #
+@router.post("/order")
+def order_inbox(request: Request) -> Response:
+    """The purchase-order inbox. Authenticated by the gate before it gets
+    here, which is why the tenant lookup below cannot fail."""
+    tenant = _authenticate_machine(request)
+    return order_request.handle_order(
+        request, tenant,
+        site_url=os.environ.get("SITE_URL", "https://punchoutsandbox.com"))
+
+
+def _order_or_404(request: Request):
+    """Load an order, scoped to the signed-in account.
+
+    Scoping is not decoration: order refs appear in URLs, and a lookup by ref
+    alone would let any account read any other account's purchase orders by
+    guessing one. The tenant id is part of the partition key precisely so that
+    this is structural rather than a check someone can forget."""
+    tenant = signup.current_tenant(request)
+    if tenant is None:
+        return None, None
+    record = orders.store().get(tenant.tenant_id, request.params.get("ref", ""))
+    return tenant, record
+
+
+@router.get("/orders")
+def order_list(request: Request) -> Response:
+    tenant = signup.current_tenant(request)
+    recent = orders.store().recent(tenant.tenant_id) if tenant else []
+    return html(render("orders.html", nav="orders", orders=recent,
+                       tenant=tenant,
+                       site_url=os.environ.get("SITE_URL",
+                                               "https://punchoutsandbox.com")))
+
+
+@router.get("/orders/{ref}")
+def order_detail(request: Request) -> Response:
+    tenant, record = _order_or_404(request)
+    if record is None:
+        return html(render("order_missing.html", nav="orders"), status=404)
+    parsed = orderflow.order_from_record(record)
+    return html(render("order.html", nav="orders", order=record,
+                       parsed=parsed, tenant=tenant,
+                       endpoint=tenant.buyer_endpoint,
+                       jurisdictions=orderflow.rates.JURISDICTIONS,
+                       header_types=orderflow.HEADER_TYPES_FOR_UI,
+                       problems=request.query.get("problems", ""),
+                       highlight=request.query.get("doc", "")))
+
+
+def _generate(request: Request, kind: str) -> Response:
+    tenant, record = _order_or_404(request)
+    if record is None:
+        return html(render("order_missing.html", nav="orders"), status=404)
+
+    form = request.form()
+    common = {"shared_secret": tenant.shared_secret,
+              "buyer_identity": record.buyer_identity or "buyer"}
+
+    if kind == "confirmation":
+        document, problems = orderflow.build_confirmation_document(
+            record, header_type=form.get("header_type", "accept"), **common)
+    elif kind == "shipnotice":
+        document, problems = orderflow.build_ship_notice_document(
+            record, carrier_code=form.get("carrier", "UPSN") or "UPSN",
+            service_level=form.get("service_level", "Ground") or "Ground",
+            **common)
+    else:
+        document, problems, _ = orderflow.build_invoice_document(
+            record, buyer_country=(form.get("country") or "").upper() or None,
+            **common)
+
+    if problems:
+        # Reported through a redirect rather than rendered inline so that a
+        # refresh does not re-submit the generation. The problems are short by
+        # construction — they are rule violations, not stack traces.
+        return redirect(f"/orders/{record.ref}"
+                        f"?problems={quote(' | '.join(problems))}")
+
+    orders.store().add_document(record, document)
+    return redirect(f"/orders/{record.ref}?doc={document.doc_id}")
+
+
+@router.post("/orders/{ref}/confirm")
+def order_confirm(request: Request) -> Response:
+    return _generate(request, "confirmation")
+
+
+@router.post("/orders/{ref}/ship")
+def order_ship(request: Request) -> Response:
+    return _generate(request, "shipnotice")
+
+
+@router.post("/orders/{ref}/invoice")
+def order_invoice(request: Request) -> Response:
+    return _generate(request, "invoice")
+
+
+@router.post("/orders/{ref}/send/{doc_id}")
+def order_send(request: Request) -> Response:
+    tenant, record = _order_or_404(request)
+    if record is None:
+        return html(render("order_missing.html", nav="orders"), status=404)
+    document = record.document(request.params.get("doc_id", ""))
+    if document is None:
+        return redirect(f"/orders/{record.ref}")
+
+    endpoint = (request.form().get("endpoint") or tenant.buyer_endpoint).strip()
+    if not endpoint:
+        return redirect(f"/orders/{record.ref}?problems="
+                        + quote("No endpoint configured. Set one in Settings, "
+                                "or type one on the send form."))
+
+    orderflow.send(record, document, endpoint)
+    return redirect(f"/orders/{record.ref}?doc={document.doc_id}")
+
+
+@router.get("/orders/{ref}/doc/{doc_id}")
+def order_document(request: Request) -> Response:
+    _, record = _order_or_404(request)
+    if record is None:
+        return Response(status=404, body="Not found", content_type="text/plain")
+    document = record.document(request.params.get("doc_id", ""))
+    if document is None:
+        return Response(status=404, body="Not found", content_type="text/plain")
+    # Served as XML rather than a download so it opens in the browser — the
+    # common next action is copying a fragment of it into a bug report.
+    return Response(status=200, body=document.xml,
+                    content_type="text/xml; charset=utf-8")
+
+
+@router.get("/orders/{ref}/source")
+def order_source(request: Request) -> Response:
+    _, record = _order_or_404(request)
+    if record is None:
+        return Response(status=404, body="Not found", content_type="text/plain")
+    return Response(status=200, body=record.raw,
+                    content_type="text/xml; charset=utf-8")
+
+
+# --------------------------------------------------------------------------- #
+# Sessions and settings
+# --------------------------------------------------------------------------- #
+@router.get("/sessions")
+def session_list(request: Request) -> Response:
+    """Punchout sessions this sandbox has open.
+
+    The nav has linked here since the first version of the storefront and the
+    route did not exist, so it 404ed. Sessions are global rather than
+    per-account because a session is created by a machine POST that may well
+    authenticate as a different account than the browser is signed in as —
+    scoping them would hide exactly the session someone is trying to debug.
+    Nothing in a session is private: a buyer name, a cart of invented
+    products, and a return URL the buyer themselves published."""
+    session, cart = get_session(request)
+    return html(render("sessions.html", nav="sessions",
+                       sessions=sessions.store().recent(), session=session,
+                       cart_count=len(cart)))
+
+
+@router.get("/settings")
+@router.post("/settings")
+def settings(request: Request) -> Response:
+    tenant = signup.current_tenant(request)
+    error = ""
+    saved = False
+
+    if request.method == "POST":
+        endpoint = (request.form().get("endpoint") or "").strip()
+        if not endpoint:
+            tenant.buyer_endpoint = ""
+            tenants.store().put(tenant)
+            saved = True
+        else:
+            try:
+                # Checked NOW rather than at send time, so a URL that this
+                # sandbox will refuse is refused while the person who typed it
+                # is still looking at the field.
+                delivery.vet_url(endpoint)
+                tenant.buyer_endpoint = endpoint
+                tenants.store().put(tenant)
+                saved = True
+            except delivery.DeliveryRefused as refusal:
+                error = str(refusal)
+
+    return html(render("settings.html", nav="settings", tenant=tenant,
+                       error=error, saved=saved,
+                       endpoint=tenant.buyer_endpoint,
+                       site_url=os.environ.get("SITE_URL",
+                                               "https://punchoutsandbox.com")))
+
+
 @router.get("/docs")
 def docs(request: Request) -> Response:
     session, cart = get_session(request)
@@ -529,10 +725,10 @@ def handler(event: dict, context=None) -> dict:
         if tenant is None:
             # The machine endpoints authenticate with issued credentials
             # instead of a cookie — a buyer system cannot fill in a form.
-            if request.path in ("/punchout/setup", "/oci/setup"):
+            if request.path in ("/punchout/setup", "/oci/setup", "/order"):
                 tenant = _authenticate_machine(request)
             if tenant is None:
-                if request.path == "/punchout/setup":
+                if request.path in ("/punchout/setup", "/order"):
                     return setup_request.unauthorised_response().to_lambda()
                 if request.path == "/oci/setup":
                     return html(
