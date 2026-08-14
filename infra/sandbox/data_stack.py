@@ -55,7 +55,11 @@ class DataStack(Stack):
             sort_key=ddb.Attribute(name="sk", type=ddb.AttributeType.STRING),
             billing_mode=ddb.BillingMode.PAY_PER_REQUEST,
             time_to_live_attribute="expires_at",
-            point_in_time_recovery=False,  # synthetic data; PITR is not free
+            # PITR costs money and this table holds synthetic documents
+            # about invented companies — there is nothing here worth
+            # recovering to a point in time.
+            point_in_time_recovery_specification=ddb.PointInTimeRecoverySpecification(
+                point_in_time_recovery_enabled=False),
             removal_policy=RemovalPolicy.DESTROY,
         )
 

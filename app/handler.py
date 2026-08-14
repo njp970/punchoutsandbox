@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from decimal import Decimal as D
 from typing import Optional
 
-from . import sessions, storefront
+from . import inspector, sessions, storefront
 from .catalogue.data import BY_SKU
 from .catalogue.taxonomy import normalise_uom
 from .cxml.punchout import (CartItem, build_cancel, build_empty_cart,
@@ -193,6 +193,14 @@ def cart_return(request: Request) -> Response:
     save_session(session)
     return html(render_return_form(
         document, browser_form_post_url=session.return_url, encoding=encoding))
+
+
+@router.get("/validate")
+@router.post("/validate")
+def validate_document(request: Request) -> Response:
+    """The product's front door — and the only route that exercises `lxml`
+    and the vendored DTDs, so it is also the deployment's liveness proof."""
+    return inspector.view_validate(request)
 
 
 @router.get("/console")

@@ -1,0 +1,20 @@
+# Runtime dependencies vendored into the Lambda zip by scripts/build_asset.sh.
+#
+# Kept separate from requirements.txt because the two answer different
+# questions: this file is what ships to AWS, requirements.txt is what a
+# developer installs locally (and includes test-only tooling).
+#
+# boto3 is deliberately ABSENT — the Lambda runtime already provides it.
+# Bundling a second copy adds ~15MB and risks running a different version from
+# the one AWS actually patches.
+
+# THE reason DTD validation is possible: the only maintained Python library
+# that validates against a DTD.
+lxml>=5.2.0
+
+# Hostile-input parsing. lxml does the VALIDATING, defusedxml does the first
+# refusal pass — see app/xml_safe.py for why both.
+defusedxml>=0.7.1
+
+jinja2>=3.1.4
+pydantic>=2.7.0

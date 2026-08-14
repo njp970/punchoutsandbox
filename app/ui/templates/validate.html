@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Validate a cXML document{% endblock %}
+{% block content %}
+
+<h1>Validate a cXML document</h1>
+<p class="muted" style="margin-top:-4px;max-width:62ch">
+  Paste any cXML document. It is validated against the real cXML 1.2.071 DTDs,
+  vendored in this service &mdash; not against our own idea of the format.
+  Nothing is stored.
+</p>
+
+{% if rejected %}
+<div class="verdict-lg verdict-fail" style="margin-bottom:18px">
+  <div class="glyph" aria-hidden="true">&#10005;</div>
+  <div>
+    <div class="headline">Refused before parsing</div>
+    <div class="detail">{{ rejected }}</div>
+  </div>
+</div>
+<p class="small muted" style="margin-top:-10px">
+  This is different from failing validation. A refused document was never
+  processed at all &mdash; it was rejected as malformed or hostile before any
+  parser walked it.
+</p>
+{% endif %}
+
+{% if report %}
+{% if report.conformant %}
+<div class="verdict-lg verdict-pass">
+  <div class="glyph" aria-hidden="true">&#10003;</div>
+  <div>
+    <div class="headline">Conformant &mdash; {{ report.document_type }}</div>
+    <div class="detail">
+      Validated against {{ report.dtd_used }}.
+      {% if report.advisories %}
+      No errors, but {{ report.advisories|length }} advisor{{ 'y' if report.advisories|length == 1 else 'ies' }} below.
+      {% else %}No errors and nothing to flag.{% endif %}
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="verdict-lg verdict-fail">
+  <div class="glyph" aria-hidden="true">&#10005;</div>
+  <div>
+    <div class="headline">
+      {{ report.errors|length }} error{{ '' if report.errors|length == 1 else 's' }}
+      {% if report.document_type %}in this {{ report.document_type }}{% endif %}
+    </div>
+    <div class="detail">Validated against {{ report.dtd_used or 'the cXML DTDs' }}.</div>
+  </div>
+</div>
+{% endif %}
+
+<div class="grid grid-2" style="margin-top:16px;align-items:start">
+  <div class="stack">
+    {% if report.errors %}
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Errors</h2></div>
+      <p class="card-note">
+        These come from the DTD. They are mechanical, not a matter of opinion
+        &mdash; the document either matches the grammar or it does not.
+      </p>
+      {% for f in report.errors %}
+      <div class="finding finding-error">
+        <div class="finding-top">
+          {% if f.line %}<span class="pill pill-fail">line {{ f.line }}</span>{% endif %}
+          <span class="finding-code">{{ f.code }}</span>
+        </div>
+        <div class="finding-msg">{{ f.message }}</div>
+        {% if f.hint %}<div class="finding-hint">{{ f.hint }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if report.advisories %}
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Advisories</h2></div>
+      <p class="card-note">
+        Things a DTD cannot express, which break real integrations anyway.
+        This document is <strong>valid</strong>; these are judgement, and
+        labelled as such rather than promoted to errors to make the report
+        look more decisive.
+      </p>
+      {% for f in report.advisories %}
+      <div class="finding finding-advisory">
+        <div class="finding-top">
+          {% if f.line %}<span class="pill pill-warn">line {{ f.line }}</span>{% endif %}
+          <span class="finding-code">{{ f.code }}</span>
+        </div>
+        <div class="finding-msg">{{ f.message }}</div>
+        {% if f.hint %}<div class="finding-hint">{{ f.hint }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Observed</h2></div>
+      <div class="table-wrap">
+        <table>
+          <tr><th>Document type</th><td class="mono">{{ report.document_type or '—' }}</td></tr>
+          <tr><th>Validated against</th><td class="mono">{{ report.dtd_used or '—' }}</td></tr>
+          <tr><th>DTD you declared</th>
+              <td class="mono" style="word-break:break-all">{{ report.declared_dtd or '(none)' }}</td></tr>
+        </table>
+      </div>
+      <p class="card-note" style="margin:12px 0 0">
+        The DTD you declare is an <em>observation</em>. We never fetch it
+        &mdash; a validator that fetched attacker-supplied URLs would be
+        server-side request forgery, and a verdict that depended on someone
+        else's uptime would not be reproducible.
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">Your document</h2></div>
+    <div class="doc">
+      <div class="doc-bar">
+        <span>{{ lines|length }} lines</span>
+        {% if report.errors %}<span class="pill pill-fail">errors highlighted</span>{% endif %}
+      </div>
+      <pre class="doc-body"><code>{% for l in lines %}<span style="display:block{% if l.bad %};background:var(--fail-wash){% endif %}"><span class="faint" style="display:inline-block;width:3.2em;text-align:right;padding-right:1em;user-select:none">{{ l.n }}</span>{{ l.text|safe }}</span>{% endfor %}</code></pre>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:16px">
+  <div class="card-header"><h2 class="card-title">Paste a document</h2></div>
+  <form method="post" action="/validate">
+    <div class="field">
+      <textarea name="document" rows="14" class="mono" spellcheck="false"
+                placeholder="Paste cXML here…">{{ document }}</textarea>
+    </div>
+    <div class="btn-row">
+      <button class="btn" type="submit">Validate</button>
+      <button class="btn btn-secondary" type="submit" name="document"
+              value="{{ sample }}">Try a sample</button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

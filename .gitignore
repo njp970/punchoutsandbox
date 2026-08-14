@@ -20,3 +20,6 @@ infra/cdk.out/
 # OS
 .DS_Store
 .preview/
+
+# Lambda build output (scripts/build_asset.sh)
+infra/build/

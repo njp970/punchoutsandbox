@@ -6,27 +6,29 @@ for docstring posture, but the compute shape is deliberately different — see
 below, because the difference is the entire reason this product can exist.*
 
 =============================================================================
-WHY A CONTAINER IMAGE AND NOT A ZIP — THIS IS THE LOAD-BEARING DECISION
+A ZIP WITH VENDORED WHEELS — AND WHY THIS REVERSED AN EARLIER DECISION
 =============================================================================
-Xenia's procurement Lambda is a zip asset with vendored arm64 wheels, and it
-parses cXML with `defusedxml` + stdlib `ElementTree`. Neither validates
-against a DTD. BRIEF.md §2 states the consequence precisely: Xenia's cXML
-tests round-trip `build.py` -> `extract.py`, which proves the two halves agree
-with each other and NOT that either conforms to the spec. The fix — `lxml`,
-the only sane Python DTD validator — is a C extension nobody wants in a zip
-bundle, so it never got added, so the independent judge never existed.
+This was originally a container image, on the argument that `lxml` — the only
+maintained Python DTD validator, and therefore the thing that makes this
+product possible at all — was a C extension nobody wanted in a zip bundle.
 
-A container image has no such constraint. `lxml` and the cXML DTD set ship
-inside the image, `app/validation.py` validates every document in both
-directions, and **that validation is the product**. If this stack ever drifts
-back to `lambda_.Function` + `Code.from_asset`, the thing being sold goes with
-it.
+**That argument was wrong**, and it is worth recording why rather than quietly
+deleting it. `pip install --platform manylinux2014_aarch64 --only-binary=:all:`
+downloads the prebuilt Linux ARM binary onto any developer machine, whatever
+that machine is. No Docker, no emulation, no cross-build. It is precisely the
+vendored-wheels pattern Xenia already uses for its own procurement Lambda, so
+the precedent was sitting in the next repository the whole time.
 
-The cost of the choice is cold start: a slim arm64 Python image carrying
-`lxml` cold-starts in roughly 1-2s. A punchout session is a human clicking
-through a catalogue, so that lands inside "the page took a moment" rather than
-"the integration timed out". Provisioned concurrency would remove it and cost
-real money every month to serve single-digit users; not worth it.
+The container cost a 2GB developer dependency, an ECR repository, slower
+deploys and slower cold starts, and bought nothing that mattered. The DTD
+validation that BRIEF.md §2 identifies as the product works identically here:
+`lxml` and the whole cXML DTD set ship inside the asset, and
+`scripts/build_asset.sh` FAILS the build if either is missing or is not
+actually aarch64 Linux — because a macOS build of lxml imports perfectly on a
+laptop and dies in Lambda with an opaque "invalid ELF header".
+
+The one real constraint is that the asset must be built before `cdk deploy`
+runs; `_ASSET_PATH` points at build output, not at source.
 
 =============================================================================
 WHY A FUNCTION URL AND NOT API GATEWAY
@@ -86,9 +88,10 @@ from aws_cdk import (
 )
 from constructs import Construct
 
-# The Dockerfile lives at the repo root next to `app/`, so the build context
-# includes the application package AND the vendored DTDs it validates against.
-_IMAGE_CONTEXT = os.path.join(os.path.dirname(__file__), "..", "..")
+# Pre-built by scripts/build_asset.sh — the application package plus vendored
+# aarch64 wheels plus the cXML DTDs. This is BUILD OUTPUT, not source: run the
+# build script before `cdk deploy` or you will ship a stale bundle.
+_ASSET_PATH = os.path.join(os.path.dirname(__file__), "..", "build", "sandbox")
 
 
 class SiteStack(Stack):
@@ -100,10 +103,17 @@ class SiteStack(Stack):
     ):
         super().__init__(scope, cid, **kwargs)
 
-        self.fn = lambda_.DockerImageFunction(
+        self.fn = lambda_.Function(
             self, "Sandbox",
             function_name=f"punchout-sandbox-{stage}",
-            code=lambda_.DockerImageCode.from_image_asset(_IMAGE_CONTEXT),
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="app.handler.handler",
+            code=lambda_.Code.from_asset(_ASSET_PATH),
+            # ARM64 is ~20% cheaper per ms and costs nothing extra to target:
+            # the wheels are downloaded for aarch64 regardless of the
+            # developer's own architecture. Must stay in step with PLATFORM in
+            # scripts/build_asset.sh — change one without the other and the
+            # Lambda cannot import its own dependencies.
             architecture=lambda_.Architecture.ARM_64,
             # 30s: the slow path is not the punchout handshake but generating a
             # multi-page PDF invoice with a real font, and DTD-validating a
