@@ -80,7 +80,14 @@ def view_validate(request: Request) -> Response:
                            document="", report=None, lines=None, rejected=None,
                            signed_in=current_tenant(request) is not None))
 
-    document = request.form().get("document", "").strip()
+    form = request.form()
+    document = form.get("document", "").strip()
+    # "Try a sample" posts `sample=1` rather than the sample text. It used to
+    # post name="document" with the sample as its value, which never worked:
+    # the textarea is also name="document" and comes first, so the browser sent
+    # both and `form()` — which takes the first value — kept the empty one.
+    if form.get("sample") and not document:
+        document = _SAMPLE
     if not document:
         return html(render("validate.html", nav="validate", canonical="/validate", sample=_SAMPLE,
                            document="", report=None, lines=None,

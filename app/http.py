@@ -135,11 +135,13 @@ SECURITY_HEADERS = {
         "img-src 'self' data:; "
         "font-src 'self'; "
         "connect-src 'none'; "
-        # Inline style attributes are used throughout the templates; inline
-        # SCRIPT is not, anywhere, which is what makes `script-src 'none'`
-        # affordable. The two auto-submit bounce pages override this header
-        # explicitly — see `handler.py`.
-        "script-src 'none'; "
+        # 'self' rather than 'none'. The first version of this header said
+        # 'none' on the claim that no inline script existed anywhere — which
+        # was wrong: the Copy buttons were inline onclick handlers, and CSP
+        # blocks those exactly as it blocks a <script> block. They stopped
+        # working silently. The handlers now live in /static/app.js, so the
+        # policy stays strict AND the claim behind it is true.
+        "script-src 'self'; "
         "form-action 'self' https:; "
         "base-uri 'none'"
     ),

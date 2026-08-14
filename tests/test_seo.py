@@ -192,6 +192,55 @@ for path in ("/", "/docs", "/validate", "/contact", "/reference"):
     check(f"{path} has a canonical", f'rel="canonical"' in body)
     check(f"{path} has an og:title", 'property="og:title"' in body)
 
+print("\n9. The CSP's central claim is actually true")
+# `script-src 'self'` blocks inline event handlers exactly as it blocks a
+# <script> block. The first version of the policy said 'none' on the claim
+# that no inline script existed — while two templates carried onclick
+# handlers, which then failed silently in every browser. A policy is only as
+# good as the claim underneath it, so the claim is now a test.
+TEMPLATES = pathlib.Path(__file__).resolve().parents[1] / "app" / "ui" / "templates"
+offenders = []
+for template in TEMPLATES.glob("*.html"):
+    text = template.read_text()
+    for handler_attr in ("onclick=", "onsubmit=", "onchange=", "onload=",
+                         "onerror=", "onfocus=", "onmouseover="):
+        if handler_attr in text:
+            offenders.append(f"{template.name}:{handler_attr}")
+    for block in re.findall(r"<script([^>]*)>", text):
+        if "src=" not in block and "ld+json" not in block:
+            offenders.append(f"{template.name}: inline <script>")
+check("no template carries an inline event handler or script block",
+      not offenders, "; ".join(offenders) + " — these are silently dead under "
+      "script-src 'self'")
+
+_, body, _ = get("/")
+check("the one script file is loaded from our own origin",
+      'src="/static/app.js"' in body)
+_, _, headers = get("/static/app.js")
+check("...and served as JavaScript",
+      "javascript" in headers.get("content-type", ""),
+      headers.get("content-type", "absent"))
+csp = get("/")[2].get("content-security-policy", "")
+check("the policy permits it and nothing else",
+      "script-src 'self'" in csp, csp[:80])
+
+print("\n10. 'Try a sample' actually loads the sample")
+# It used to be a submit button named "document" carrying the sample as its
+# value — but the textarea is also named "document" and comes first in
+# document order, so the browser sent both and Request.form(), which takes
+# the first, kept the empty one. The button had never worked once.
+event = {"requestContext": {"http": {"method": "POST", "path": "/validate"}},
+         "queryStringParameters": {}, "headers": {}, "cookies": [],
+         "body": base64.b64encode(b"document=&sample=1").decode(),
+         "isBase64Encoded": True}
+result = handler(event)
+page = (base64.b64decode(result["body"]).decode()
+        if result.get("isBase64Encoded") else result["body"])
+check("the sample is loaded, not the empty textarea",
+      "PunchOutSetupRequest" in page and "Nothing to validate" not in page,
+      "the browser posts BOTH fields; the first one wins")
+
+
 print("\n" + "=" * 70)
 if failures:
     print(f"FAILED ({len(failures)}): " + ", ".join(failures))

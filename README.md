@@ -5,6 +5,12 @@ cXML PunchOut, OCI, order confirmation, dispatch notification, and the invoice
 flow back — pointed at by anyone building a buyer-side punchout client who has
 nowhere else to point it.
 
+It also answers the question a validator cannot: **what survives ingestion.**
+cXML imposes almost no length limits, so every limit that truncates your data
+is imposed by the buyer platform and none of them publish it.
+[`/ingest`](https://punchoutsandbox.com/ingest) applies what Ariba, Coupa,
+JAGGAER and Oracle each do on receipt and shows you what is left.
+
 Live at [punchoutsandbox.com](https://punchoutsandbox.com) *(not yet deployed)*.
 
 ---

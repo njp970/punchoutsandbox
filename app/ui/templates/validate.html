@@ -167,8 +167,12 @@
     </div>
     <div class="btn-row">
       <button class="btn" type="submit">Validate</button>
-      <button class="btn btn-secondary" type="submit" name="document"
-              value="{{ sample }}">Try a sample</button>
+      {# A DISTINCT name. It used to be name="document" carrying the sample as
+         its value — but the textarea above is also name="document" and comes
+         first in document order, so the browser sent both and the empty one
+         won. The button had never worked. #}
+      <button class="btn btn-secondary" type="submit" name="sample"
+              value="1">Try a sample</button>
     </div>
   </form>
 </div>

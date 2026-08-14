@@ -30,13 +30,13 @@
     <label style="margin-top:8px">Identity <span class="faint">(From / To Identity, or OCI USERNAME)</span></label>
     <div class="copyfield">
       <code>{{ tenant.sandbox_id }}</code>
-      <button type="button" onclick="navigator.clipboard.writeText('{{ tenant.sandbox_id }}')">Copy</button>
+      <button type="button" data-copy="{{ tenant.sandbox_id }}">Copy</button>
     </div>
 
     <label style="margin-top:14px">Shared secret <span class="faint">(SharedSecret, or OCI PASSWORD)</span></label>
     <div class="copyfield">
       <code>{{ tenant.shared_secret }}</code>
-      <button type="button" onclick="navigator.clipboard.writeText('{{ tenant.shared_secret }}')">Copy</button>
+      <button type="button" data-copy="{{ tenant.shared_secret }}">Copy</button>
     </div>
 
     <p class="card-note" style="margin-top:14px">

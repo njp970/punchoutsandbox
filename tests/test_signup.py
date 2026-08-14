@@ -67,7 +67,9 @@ def signup_now(email="neil@example.com"):
     st, page, raw = go("/signup", "POST", urlencode({"email": email}).encode())
     token = raw["cookies"][0].split("=")[1].split(";")[0]
     sid = re.search(r"<code>(PSB\d{9})</code>", page).group(1)
-    sec = re.search(r"writeText\('([A-Za-z0-9_-]{20,})'\)", page).group(1)
+    # The Copy buttons moved from inline onclick to data-copy when the CSP
+    # tightened to script-src 'self'.
+    sec = re.search(r'data-copy="([A-Za-z0-9_-]{20,})"', page).group(1)
     return token, sid, sec
 
 

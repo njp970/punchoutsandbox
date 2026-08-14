@@ -22,7 +22,7 @@
   </p>
   <div class="copyfield">
     <code>{{ site_url }}/punchout/setup</code>
-    <button type="button" onclick="navigator.clipboard.writeText('{{ site_url }}/punchout/setup')">Copy</button>
+    <button type="button" data-copy="{{ site_url }}/punchout/setup">Copy</button>
   </div>
   <div class="table-wrap" style="margin-top:14px">
     <table>
@@ -189,7 +189,7 @@ XML</code></pre>
   </p>
   <div class="copyfield">
     <code>{{ site_url }}/oci/setup</code>
-    <button type="button" onclick="navigator.clipboard.writeText('{{ site_url }}/oci/setup')">Copy</button>
+    <button type="button" data-copy="{{ site_url }}/oci/setup">Copy</button>
   </div>
   <div class="table-wrap" style="margin-top:14px">
     <table>
@@ -397,6 +397,63 @@ XML</code></pre>
     a stranger and POST to it" is the definition of server-side request
     forgery, and this sandbox runs inside someone else's AWS account.
     <a href="/settings">Settings</a> lists the rules in full.
+  </p>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2 class="card-title">9. What survives ingestion &mdash; the other half of "is it valid"</h2></div>
+  <p class="card-note">
+    <a href="/validate">/validate</a> tells you whether a document is
+    conformant. That is necessary and not sufficient, because
+    <strong>cXML imposes almost no length limits</strong> &mdash; every limit
+    that truncates your data is imposed by the buyer platform on ingestion,
+    and none of them publish it. A perfectly valid cart can arrive with the
+    wrong price on it.
+  </p>
+  <p class="card-note">
+    <a href="/ingest">/ingest</a> answers that question instead. Paste a
+    <code>PunchOutOrderMessage</code> (or use your current cart) and it applies
+    what each platform is known to do on receipt:
+  </p>
+  <div class="table-wrap">
+    <table>
+      <tr><th>SAP Ariba</th>
+          <td>Accepts a long description and shows only the first 255 on the
+              requisition and the PO. Limits are counted in <strong>bytes</strong>,
+              so a Japanese description runs out around 666 characters.
+              <code>?</code> <code>{</code> <code>}</code> in a part ID are a
+              hard reject.</td></tr>
+      <tr><th>JAGGAER</th>
+          <td>An unrecognised <code>UnitOfMeasure</code> silently becomes
+              <code>EA</code>. A box of 30 at £9.99 becomes 30 each at £9.99 and
+              the buyer computes £299.70. Prices round to 4 decimal places.</td></tr>
+      <tr><th>Coupa</th>
+          <td>Fails the cart import outright when the unit does not already
+              exist in the buyer's configuration &mdash; loud rather than
+              silent, which is the better failure to have.</td></tr>
+      <tr><th>Oracle</th>
+          <td>Commonly configured to require <code>EACH</code> where everyone
+              else says <code>EA</code>.</td></tr>
+      <tr><th>Safe target</th>
+          <td>Every limit at the tightest value any platform imposes. A cart
+              that survives this survives all of them.</td></tr>
+    </table>
+  </div>
+  <p class="card-note">
+    Each finding is labelled with one of four outcomes:
+    <strong>reject loudly</strong>, <strong>reject vaguely</strong>,
+    <strong>accept and corrupt</strong>, <strong>accept and preserve</strong>.
+    Only the third should frighten you &mdash; a rejection is a bad afternoon,
+    a silent change is a wrong price nobody notices until reconciliation.
+  </p>
+  <p class="card-note">
+    <strong>Where the numbers come from, and how sure we are.</strong> Vendor
+    documentation, support notes and observed behaviour, gathered because no
+    platform publishes a consolidated table &mdash; the full working is on
+    <a href="/reference/platform-conformance">the conformance reference</a>.
+    Rules we cannot fully evidence are marked <em>unverified</em> on the page
+    rather than quietly asserted. If you know one of them is wrong, that is
+    the single most useful thing you can <a href="/contact">tell us</a>.
   </p>
 </div>
 
