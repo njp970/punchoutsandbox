@@ -55,7 +55,8 @@ from .ui.render import render
 
 #: Paths reachable with no account. Prefix match; see `is_open`.
 OPEN_PATHS = ("/docs", "/signup", "/static/", "/favicon.ico", "/validate",
-              "/contact", "/reference", "/robots.txt", "/sitemap.xml")
+              "/contact", "/reference", "/robots.txt", "/sitemap.xml",
+              "/ingest")
 
 
 def is_open(path: str) -> bool:

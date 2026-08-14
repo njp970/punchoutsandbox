@@ -23,9 +23,9 @@ from decimal import Decimal as D
 from typing import Optional
 from urllib.parse import quote
 
-from . import (contact, delivery, inspector, mailer, order_request, orders,
-               orderflow, reference, sessions, setup_request, signup,
-               storefront, telemetry, tenants)
+from . import (contact, delivery, differ, inspector, mailer, order_request,
+               orders, orderflow, platforms, reference, sessions,
+               setup_request, signup, storefront, telemetry, tenants)
 from .catalogue.data import BY_SKU, search
 from .catalogue.taxonomy import normalise_uom
 from .cxml.punchout import (CartItem, build_cancel, build_empty_cart,
@@ -35,6 +35,7 @@ from .http import (AUTOSUBMIT_CSP, MethodNotAllowed, Request, Response,
                    Router, html, parse_event, redirect, require_edge)
 from .sessions import Session
 from .ui.render import render
+from .xml_safe import XmlRejected, parse
 
 
 def _cart_item(sku: str, quantity: int) -> CartItem:
@@ -225,6 +226,62 @@ def reference_page(request: Request) -> Response:
                        canonical=f"/reference/{slug}"))
 
 
+@router.get("/ingest")
+@router.post("/ingest")
+def ingest_preview(request: Request) -> Response:
+    """Apply each buyer platform's ingestion rules and show what survives.
+
+    Open, and deliberately so. It answers the question `/validate` cannot —
+    "my document is valid, so why did the price arrive wrong" — and that is
+    the question somebody types into a search engine at eleven at night."""
+    session, cart = get_session(request)
+    document = ""
+    lines: list = []
+    rejected = ""
+
+    if request.method == "POST":
+        form = request.form()
+        if form.get("source") == "cart" and cart:
+            # Build the real cart document rather than a shortcut structure:
+            # what gets analysed must be what would actually be sent.
+            document = build_punchout_order_message(
+                [_cart_item(sku, qty) for sku, qty in cart.items()
+                 if sku in BY_SKU],
+                buyer_cookie=session.buyer_cookie if session else "preview",
+                payload_id=f"{secrets.token_hex(8)}@punchoutsandbox.com",
+                timestamp=datetime.now(timezone.utc).astimezone(),
+                from_identity="meridian-supply", to_identity="buyer",
+                sender_identity="meridian-supply",
+                operation_allowed="edit",
+            ).decode("utf-8")
+        else:
+            document = (form.get("document") or "").strip()
+
+        if not document:
+            rejected = "Nothing to analyse — paste a document first."
+        elif len(document.encode("utf-8")) > inspector.MAX_PASTE_BYTES:
+            rejected = (f"That document is {len(document.encode()):,} bytes; "
+                        f"this page accepts up to {inspector.MAX_PASTE_BYTES:,}.")
+        else:
+            try:
+                lines = differ.extract_lines(parse(document.encode("utf-8")))
+            except XmlRejected as exc:
+                rejected = str(exc)
+            if not lines and not rejected:
+                rejected = ("No line items found. This page needs a document "
+                            "with ItemIn or ItemOut elements — a "
+                            "PunchOutOrderMessage or an OrderRequest.")
+
+    results = [platforms.ingest(lines, profile.key)
+               for profile in platforms.PROFILES] if lines else []
+
+    return html(render(
+        "ingest.html", nav="ingest", session=session, cart_count=len(cart),
+        canonical="/ingest", document=document, results=results,
+        profiles=platforms.BY_KEY, rejected=rejected,
+        has_cart=bool(cart)))
+
+
 @router.get("/robots.txt")
 def robots(request: Request) -> Response:
     """Both this and /sitemap.xml previously fell through to the signup gate
@@ -267,7 +324,8 @@ def sitemap(request: Request) -> Response:
     Listing a gated URL here would be asking Google to index the signup form,
     which is the opposite of the point."""
     site = os.environ.get("SITE_URL", "https://punchoutsandbox.com")
-    urls = ["/", "/docs", "/validate", "/reference", "/signup", "/contact"]
+    urls = ["/", "/docs", "/validate", "/ingest", "/reference",
+            "/signup", "/contact"]
     urls += [f"/reference/{page.slug}" for page in reference.PAGES]
     entries = "".join(
         # `priority` is ignored by Google and has been for years; it is

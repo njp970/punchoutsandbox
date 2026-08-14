@@ -566,17 +566,16 @@ _COMPARED_FIELDS = (
 )
 
 
-def diff(cart_doc: SafeDocument, order_doc: SafeDocument) -> DiffReport:
-    """Diff a returned cart against the purchase order the buyer produced
-    from it.
+def diff_lines(cart: list[Line], order: list[Line]) -> DiffReport:
+    """Compare two already-extracted line lists.
 
-    `cart_doc` is the `PunchOutOrderMessage` the supplier sent; `order_doc` is
-    the `OrderRequest` that came back. Neither is trusted — both have already
-    been through `xml_safe.parse`."""
+    Split out of `diff` so that a caller holding `Line` objects rather than two
+    documents can reuse the matching and the diagnosis — which is what
+    `platforms.py` does when it models what a buyer platform would do to a
+    cart. Synthesising a second cXML document just to diff against would have
+    meant a round trip through the builder and the parser to compare data we
+    already had in hand."""
     report = DiffReport()
-    cart = extract_lines(cart_doc)
-    order = extract_lines(order_doc)
-
     if not cart:
         report.notes.append("The cart document contains no line items — nothing to compare.")
         return report
@@ -603,6 +602,19 @@ def diff(cart_doc: SafeDocument, order_doc: SafeDocument) -> DiffReport:
             )
         report.lines.append(line_diff)
 
+    return report
+
+
+def diff(cart_doc: SafeDocument, order_doc: SafeDocument) -> DiffReport:
+    """Diff a returned cart against the purchase order the buyer produced
+    from it.
+
+    `cart_doc` is the `PunchOutOrderMessage` the supplier sent; `order_doc` is
+    the `OrderRequest` that came back. Neither is trusted — both have already
+    been through `xml_safe.parse`."""
+    report = diff_lines(extract_lines(cart_doc), extract_lines(order_doc))
+    if not report.lines and report.notes:
+        return report
     # Header total. Compared separately because the spec defines it as
     # EXCLUDING tax and shipping, so a mismatch here has a legitimate
     # explanation that a line-level mismatch does not.

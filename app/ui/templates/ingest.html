@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}What survives ingestion — Ariba, Coupa, JAGGAER, Oracle{% endblock %}
+{% block description %}Paste a cXML cart and see what each buyer platform would actually store. Silent truncation, unit-of-measure defaulting, price rounding and outright rejection, per platform.{% endblock %}
+{% block content %}
+
+<div style="max-width:74ch">
+  <h1>What survives ingestion</h1>
+  <p class="muted" style="margin-top:-4px">
+    Your document can be perfectly valid and still arrive wrong. This applies
+    what each buyer platform is known to do on ingestion and shows you what is
+    left &mdash; the question <a href="/validate">the validator</a> cannot
+    answer.
+  </p>
+
+  {% if rejected %}
+  <div class="verdict-lg verdict-fail" style="margin:16px 0">
+    <div class="glyph" aria-hidden="true">&#10005;</div>
+    <div><div class="headline">{{ rejected }}</div></div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <form method="post" action="/ingest">
+      <div class="field">
+        <label for="document">A <code>PunchOutOrderMessage</code>, or any cXML with line items</label>
+        <textarea id="document" name="document" rows="10"
+                  placeholder="Paste the cart your catalogue returns…">{{ document }}</textarea>
+      </div>
+      <div class="btn-row">
+        <button class="btn" type="submit">Show me what survives</button>
+        {% if has_cart %}
+        <button class="btn btn-secondary" type="submit" name="source" value="cart">
+          Use my current cart ({{ cart_count }})
+        </button>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+
+  {% if results %}
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">Summary</h2></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Platform</th><th>Verdict</th><th>What it would do</th></tr></thead>
+        <tbody>
+          {% for r in results %}
+          <tr>
+            <td><strong>{{ profiles[r.platform].name }}</strong></td>
+            <td>
+              {% if r.verdict == "rejected" %}<span class="pill pill-fail">rejects the cart</span>
+              {% elif r.verdict == "corrupted" %}<span class="pill pill-warn">accepts and corrupts</span>
+              {% else %}<span class="pill pill-pass">accepts and preserves</span>{% endif %}
+            </td>
+            <td>
+              {% if r.rejections %}{{ r.rejections|length }} rejection{{ "s" if r.rejections|length != 1 }}{% endif %}
+              {% if r.rejections and r.corruptions %} · {% endif %}
+              {% if r.corruptions %}{{ r.corruptions|length }} silent change{{ "s" if r.corruptions|length != 1 }}{% endif %}
+              {% if not r.effects %}nothing{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="card-note" style="margin:12px 0 0">
+      <strong>&ldquo;Accepts and corrupts&rdquo; is the dangerous row.</strong>
+      A rejection is a bad afternoon; a silent change is a wrong price on a
+      purchase order that nobody notices until reconciliation.
+    </p>
+  </div>
+
+  {% for r in results %}
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">{{ profiles[r.platform].name }}</h2>
+    </div>
+    <p class="card-note" style="margin:0 0 12px">{{ profiles[r.platform].summary }}</p>
+    {% if profiles[r.platform].caveat %}
+    <div class="banner banner-warn" style="margin-bottom:12px">
+      <span aria-hidden="true">&#9888;</span>
+      <div>{{ profiles[r.platform].caveat }}</div>
+    </div>
+    {% endif %}
+
+    {% if not r.effects %}
+    <div class="finding"><div class="finding-msg">
+      Nothing changes. Every field survives this platform intact.
+    </div></div>
+    {% else %}
+    {% for e in r.effects %}
+    <div class="finding {{ 'finding-error' if e.outcome.startswith('reject') else 'finding-advisory' }}">
+      <div class="finding-top">
+        <span class="finding-code">line {{ e.line_index }} · {{ e.field }}</span>
+        {% if e.outcome == "accept-and-corrupt" %}
+        <span class="pill pill-warn">silent</span>
+        {% else %}
+        <span class="pill pill-fail">rejected</span>
+        {% endif %}
+        {% if not e.verified %}<span class="pill pill-idle">unverified</span>{% endif %}
+      </div>
+      <div class="finding-msg">{{ e.detail }}</div>
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">Where these rules come from</h2></div>
+    <p class="card-note" style="margin:0">
+      Vendor documentation, support notes and observed behaviour, gathered
+      because no platform publishes a consolidated table &mdash; the full
+      working is on
+      <a href="/reference/platform-conformance">the conformance reference</a>.
+      Rules marked <span class="pill pill-idle">unverified</span> are inferred
+      rather than documented, and are labelled rather than quietly dropped or
+      quietly asserted.
+    </p>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
