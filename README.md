@@ -11,7 +11,7 @@ is imposed by the buyer platform and none of them publish it.
 [`/ingest`](https://punchoutsandbox.com/ingest) applies what Ariba, Coupa,
 JAGGAER and Oracle each do on receipt and shows you what is left.
 
-Live at [punchoutsandbox.com](https://punchoutsandbox.com) *(not yet deployed)*.
+**Live at [punchoutsandbox.com](https://punchoutsandbox.com).** Free, no paid tier, [MIT](LICENSE).
 
 ---
 
@@ -40,29 +40,48 @@ that exists so the judge has something to judge.
 ## What it does
 
 - **Serves a real punchout session.** Point your cXML `PunchOutSetupRequest`
-  or OCI form POST at it, browse a catalogue, return a cart.
+  or OCI call-up at it, browse a catalogue of 96 products with genuine UNSPSC
+  codes, return a conformant cart. Full OCI support including `DETAIL`,
+  `VALIDATE` and `BACKGROUND_SEARCH`.
 - **Validates every document against the actual cXML DTDs** (vendored 1.2.071),
-  in both directions, and tells you exactly what is wrong and where.
+  in both directions, and tells you exactly what is wrong and where — every
+  error with its line number, element and a hint.
 - **Separates errors from advisories.** Errors come from the DTD and are not a
   matter of opinion. Advisories are things a DTD cannot express but that break
   real integrations — a dropped `SupplierPartAuxiliaryID`, mixed currencies,
   totals that do not add up, `each` where `EA` was meant.
-- **Runs the whole downstream flow**: order confirmation, dispatch notice,
-  and invoices with multi-country tax (VAT, GST, sales tax, reverse charge).
+- **Runs the whole downstream flow**: purchase order in, then order
+  confirmation, dispatch notice and invoices with multi-country tax (VAT, GST,
+  sales tax, reverse charge) across 27 jurisdictions — POSTed to your own cXML
+  inbox so you can test the half nobody can normally test.
+- **Shows what survives ingestion.** [`/ingest`](https://punchoutsandbox.com/ingest)
+  applies what each buyer platform silently truncates, rounds or defaults.
+- **Hands you documents built to break your parser.**
+  [`/samples`](https://punchoutsandbox.com/samples) serves a worked example of
+  every message, plus an adversarial set: conformant cXML that disagrees with
+  the order in exactly one way a real supplier really does — despatched in a
+  different unit, partially shipped, confirmed at a changed price.
+- **Has a machine path.** JSON API, credentials in headers, no browser
+  anywhere — see below.
 
 ## Status
 
-Early build. See [BRIEF.md](BRIEF.md) §8 for the honest commercial read — this
-is deliberately a **free tool**, not a product. It is worth more as
+**Live and in use.** Deployed on AWS Lambda behind Cloudflare, £0/month, no
+billing and no SLA. See [BRIEF.md](BRIEF.md) §8 for the honest commercial read:
+this is deliberately a **free tool**, not a product. It is worth more as
 credibility and reach into the audience that buys procurement software than as
 revenue.
 
-| Area | State |
+| | |
 |---|---|
-| CDK infrastructure | scaffolded |
-| Hardened XML parsing + DTD validation | working, smoke-tested |
-| Design system | built |
-| Mock catalogue, tax engine, UI templates, handlers | in progress |
+| Protocols | cXML PunchOut, SAP OCI |
+| Documents | `PunchOutSetupRequest` · `PunchOutOrderMessage` · `OrderRequest` · `ConfirmationRequest` · `ShipNoticeRequest` · `InvoiceDetailRequest` |
+| Tests | 13 suites, plus a 147-check QA suite that runs against the deployed site |
+| Not built | `multipart/related` attachments; OCI `SOURCING` (SAP never implemented it either) |
+
+Its first serious use by an outside integrator found six defects in **their**
+implementation in an afternoon — and three in this one, all since fixed and
+each now pinned by a test.
 
 ## Repository layout
 
@@ -72,11 +91,16 @@ app/                 the Lambda application
   validation.py      the independent judge; this module is the product
   cxml/dtd/          vendored cXML 1.2.071 DTDs (see that directory's README)
   ui/                design system and templates
+  api.py             the JSON machine path
+  platforms.py       what each buyer platform does to a cart on ingestion
+  samples.py         worked and adversarial example documents
 infra/               Python CDK — DataStack + SiteStack
-  scripts/           Cloudflare DNS + edge-secret deploy
+  scripts/           Cloudflare DNS, edge secret, SES, search verification
 BRIEF.md             the idea, the case against, and the verdict
 RESEARCH.md          market evidence behind that verdict
-HOSTING.md           hosting plan, naming, and the AWS account layout
+HOSTING.md           hosting, the AWS account layout, and the QA findings
+INTEGRATING.md       quick start for buyer-side developers
+docs/reference/      the conformance material, published at /reference
 ```
 
 ## Integrating against it
