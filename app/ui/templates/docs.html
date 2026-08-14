@@ -274,6 +274,35 @@ XML</code></pre>
     </div>
   </div>
 
+  <h3 style="margin-top:20px">FUNCTION=BACKGROUND_SEARCH</h3>
+  <p class="card-note">
+    Cross-catalog search. SRM runs this against every catalogue configured
+    for it and <strong>merges the hits into one list</strong>. You are not
+    being browsed &mdash; you are being scraped, once, from the DOM you
+    return.
+  </p>
+  <div class="doc">
+    <pre class="doc-body"><code>{{ site_url }}/oci/setup?FUNCTION=BACKGROUND_SEARCH
+    &amp;SEARCHSTRING=paper&amp;HOOK_URL=&hellip;</code></pre>
+  </div>
+  <div class="finding finding-advisory" style="margin-top:12px">
+    <div class="finding-top"><span class="pill pill-warn">the rules invert VALIDATE's</span></div>
+    <div class="finding-msg">
+      The form must <strong>not</strong> auto-submit &mdash; VALIDATE requires
+      one, and doing the same here would add the first hit to the user's cart
+      unbidden the moment a search ran. And every result must be reachable
+      <strong>without scrolling</strong>, which in practice bans pagination,
+      lazy loading and any script that builds results after load: SRM reads
+      the DOM it is given, once. A &ldquo;load more&rdquo; button returns a
+      catalogue that appears to hold one product.
+    </div>
+    <div class="finding-hint">
+      Results are capped at 25 and the cap is stated on the page. A silent
+      truncation reads as &ldquo;that is all there is&rdquo;, and a supplier
+      returning hundreds crowds every other catalogue out of the merged list.
+    </div>
+  </div>
+
   <h3 style="margin-top:20px">FUNCTION=DETAIL</h3>
   <p class="card-note">
     A pure human drill-down &mdash; it returns the product page and
@@ -301,11 +330,10 @@ XML</code></pre>
       <tr><th>Sessions</th><td>Expire after 1 hour. Nothing is kept.</td></tr>
       <tr><th>Credentials</th><td>Not enforced. Anything is accepted and echoed back.</td></tr>
       <tr><th>OCI functions</th>
-          <td><code>DETAIL</code> and <code>VALIDATE</code> are implemented.
-              <code>BACKGROUND_SEARCH</code> returns 501 &mdash; its
-              requirements are the inverse of VALIDATE and it is not built
-              yet. <code>SOURCING</code> SAP itself has never
-              implemented.</td></tr>
+          <td><code>DETAIL</code>, <code>VALIDATE</code> and
+              <code>BACKGROUND_SEARCH</code> are implemented.
+              <code>SOURCING</code> is not &mdash; SAP itself has never
+              implemented it.</td></tr>
       <tr><th>Companies</th>
           <td>Every supplier, brand and document here is invented. Generated
               documents are test artifacts and must not be used as anything

@@ -213,12 +213,56 @@ st, _, _ = request("/oci/setup", "GET", query={
     "FUNCTION": "DETAIL", "PRODUCTID": "NOPE"})
 check("unknown PRODUCTID is a 404", st == 404)
 
-print("\n=== 17. BACKGROUND_SEARCH is honest about not being built ===")
+print("\n=== 17. BACKGROUND_SEARCH: the rules INVERTED from VALIDATE ===")
 st, page, _ = request("/oci/setup", "GET", query={
+    "HOOK_URL": "https://srm.example.com/hook?sid=3",
+    "FUNCTION": "BACKGROUND_SEARCH", "SEARCHSTRING": "paper"})
+check("returns 200", st == 200, f"status {st}")
+check("rule A: must NOT auto-submit", "submit()" not in page,
+      "VALIDATE requires an auto-submit; doing it here would add the first "
+      "hit to the user's cart unbidden the instant a search ran")
+check("rule B: results are visible, not hidden-only", "<table" in page,
+      "the page is scraped, but a developer testing by eye must see something")
+check("results carry OCI fields for SRM to read",
+      "NEW_ITEM-DESCRIPTION[1]" in page)
+check("indices still 1-based", "NEW_ITEM-DESCRIPTION[0]" not in page)
+check("HOOK_URL still split", 'name="sid" value="3"' in page)
+check("action is the bare URL",
+      'action="https://srm.example.com/hook"' in page)
+check("no pagination or lazy-loading markup",
+      "load more" not in page.lower() and "<script" not in page,
+      "SRM reads the DOM it is given, ONCE — a 'load more' button returns a "
+      "catalogue that appears to hold one product")
+
+print("\n=== 18. Search actually searches ===")
+_, paper, _ = request("/oci/setup", "GET", query={
     "HOOK_URL": "https://x/h", "FUNCTION": "BACKGROUND_SEARCH",
     "SEARCHSTRING": "paper"})
-check("returns 501 rather than pretending", st == 501)
-check("explains the inverted requirements", "INVERSE" in page or "inverse" in page.lower())
+_, glove, _ = request("/oci/setup", "GET", query={
+    "HOOK_URL": "https://x/h", "FUNCTION": "BACKGROUND_SEARCH",
+    "SEARCHSTRING": "glove"})
+check("a paper search finds copier paper", "Copier Paper" in paper)
+check("a glove search does not", "Copier Paper" not in glove)
+check("a glove search finds gloves", "Glove" in glove or "glove" in glove)
+
+print("\n=== 19. Caps are DISCLOSED, never silent ===")
+_, broad, _ = request("/oci/setup", "GET", query={
+    "HOOK_URL": "https://x/h", "FUNCTION": "BACKGROUND_SEARCH",
+    "SEARCHSTRING": "e"})
+import re as _re2
+count = len(_re2.findall(r'NEW_ITEM-DESCRIPTION\[\d+\]', broad))
+check("results are capped", count <= 25, f"{count} results")
+check("and the cap is stated on the page", "Showing" in broad,
+      "a silent truncation reads as 'that is all there is'")
+
+print("\n=== 20. An empty SEARCHSTRING returns nothing, not everything ===")
+_, empty, _ = request("/oci/setup", "GET", query={
+    "HOOK_URL": "https://x/h", "FUNCTION": "BACKGROUND_SEARCH",
+    "SEARCHSTRING": ""})
+check("no results for an empty term", "NEW_ITEM-DESCRIPTION[1]" not in empty,
+      "dumping the whole catalogue into SRM's merged list would be hostile "
+      "to every other catalogue in it")
+check("says so plainly", "No matches" in empty)
 
 sessions.reset_store(None)
 

@@ -23,7 +23,7 @@ from decimal import Decimal as D
 from typing import Optional
 
 from . import inspector, sessions, setup_request, storefront
-from .catalogue.data import BY_SKU
+from .catalogue.data import BY_SKU, search
 from .catalogue.taxonomy import normalise_uom
 from .cxml.punchout import (CartItem, build_cancel, build_empty_cart,
                             build_punchout_order_message, render_return_form)
@@ -286,6 +286,38 @@ def _oci_validate(callup) -> Response:
     return html(page)
 
 
+def _oci_background_search(callup) -> Response:
+    """Answer FUNCTION=BACKGROUND_SEARCH — SRM scraping us for a merged list.
+
+    SRM runs this across every catalogue configured for Cross-Catalog Search
+    and merges the hits into one list. We are not being browsed; we are being
+    read once, mechanically, from the DOM we return."""
+    if not callup.hook_url:
+        return html(
+            "<h1>No HOOK_URL</h1><p>Background search returns transferable "
+            "items, so it needs a return address.</p>", status=400)
+
+    term = (callup.search_string or "").strip()
+    if not term:
+        # An empty SEARCHSTRING is a caller bug, not a request for everything.
+        # Returning the whole catalogue into SRM's merged list would be
+        # actively hostile to the other catalogues in it.
+        page, _ = oci_out.render_search_response(
+            [], search_string="", hook_url=callup.hook_url,
+            return_target=callup.return_target, charset=callup.charset)
+        return html(page)
+
+    matches = search(term)
+    shown = matches[:oci_out.MAX_SEARCH_RESULTS]
+    items = [_oci_item(p.sku, 1) for p in shown]
+
+    page, _ = oci_out.render_search_response(
+        items, search_string=term, hook_url=callup.hook_url,
+        return_target=callup.return_target, charset=callup.charset,
+        total_matches=len(matches))
+    return html(page)
+
+
 @router.get("/oci/setup")
 @router.post("/oci/setup")
 def oci_setup(request: Request) -> Response:
@@ -318,12 +350,7 @@ def oci_setup(request: Request) -> Response:
         return _oci_validate(callup)
 
     if callup.function == "BACKGROUND_SEARCH":
-        return html(
-            "<h1>Not implemented</h1><p>BACKGROUND_SEARCH is recognised but "
-            "not yet answered. Note that its requirements are the INVERSE of "
-            "VALIDATE: results must be visible and reachable without "
-            "scrolling, and the form must <strong>not</strong> auto-submit.</p>",
-            status=501)
+        return _oci_background_search(callup)
 
     if not callup.hook_url:
         return html(

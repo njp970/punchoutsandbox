@@ -336,3 +336,111 @@ def render_validate_response(
         title="Validating",
     )
     return page, advisories
+
+
+#: How many hits a background search will return. SRM aggregates results from
+#: every cross-catalog-search catalogue into ONE list, so a supplier returning
+#: hundreds crowds out everyone else and makes the combined list useless.
+#: Capped deliberately — and the cap is DISCLOSED on the page (see below),
+#: because a silent truncation reads as "that is all there is".
+MAX_SEARCH_RESULTS = 25
+
+
+def render_search_response(
+    items: list[OciItem],
+    *,
+    search_string: str,
+    hook_url: str,
+    return_target: str = "_top",
+    charset: str = "utf-8",
+    total_matches: Optional[int] = None,
+) -> tuple[str, list[OciAdvisory]]:
+    """Answer `FUNCTION=BACKGROUND_SEARCH`.
+
+    SRM calls this across every catalogue configured for Cross-Catalog Search
+    and merges the results into a single list for the user. The catalogue is
+    not being browsed; it is being **scraped**.
+
+    THE TWO RULES ARE THE EXACT INVERSE OF `VALIDATE`, and that inversion is
+    the whole difficulty of this function:
+
+    - **The form must NOT be submitted automatically.** VALIDATE requires an
+      auto-submit; doing the same here would fire the user's browser at the
+      HOOK_URL the instant a search ran, adding the first result to their
+      cart unbidden.
+    - **All results must be reachable without scrolling**, "since the page is
+      evaluated automatically". In practice this is a ban on pagination, lazy
+      loading and any JavaScript that builds results after load: SRM reads the
+      DOM it is given, once. A "load more" button returns one result and looks
+      like a catalogue with one product.
+
+    So: every hit is in the markup, in one form, on first render, and nothing
+    submits until SRM decides to.
+    """
+    fields, advisories = build_fields(items)
+    base, _, query = hook_url.partition("?")
+
+    inputs: list[str] = []
+    from urllib.parse import unquote_plus
+    for pair in query.split("&"):
+        if not pair:
+            continue
+        name, _, value = pair.partition("=")
+        inputs.append(
+            f'<input type="hidden" name="{escape(unquote_plus(name), quote=True)}" '
+            f'value="{escape(unquote_plus(value), quote=True)}">')
+    inputs.append('<input type="hidden" name="~OkCode" value="ADDI">')
+    inputs.append(f'<input type="hidden" name="~target" value="{escape(return_target, quote=True)}">')
+    inputs.append('<input type="hidden" name="~CALLER" value="CTLG">')
+    for name, value in fields.items():
+        inputs.append(
+            f'<input type="hidden" name="{escape(name, quote=True)}" '
+            f'value="{escape(value, quote=True)}">')
+
+    # A human-readable echo of the same data. SRM ignores it — it reads the
+    # inputs — but a developer testing this by eye otherwise sees a blank page
+    # and cannot tell a working search from a broken one.
+    rows = "".join(
+        f"<tr><td>{escape(i.description)}</td>"
+        f"<td>{escape(i.vendor_mat or '')}</td>"
+        f"<td style='text-align:right'>{i.price} {escape(i.currency)}</td>"
+        f"<td>{escape(i.unit)}</td></tr>"
+        for i in items
+    ) or "<tr><td colspan='4'>No matches.</td></tr>"
+
+    # NO SILENT CAPS. If results were dropped, the page says so — otherwise
+    # the list reads as complete and a user concludes the catalogue is thin.
+    capped = ""
+    if total_matches is not None and total_matches > len(items):
+        capped = (
+            f"<p><strong>Showing {len(items)} of {total_matches} matches.</strong> "
+            f"This catalogue caps background-search results at "
+            f"{MAX_SEARCH_RESULTS}, because SRM merges every catalogue's hits "
+            f"into one list and a supplier returning hundreds crowds out the "
+            f"rest.</p>"
+        )
+
+    return (
+        "<!doctype html><html><head>"
+        f'<meta http-equiv="Content-Type" content="text/html; charset={escape(charset, quote=True)}">'
+        f"<title>Search results</title></head>"
+        "<body style='font:14px system-ui;padding:24px'>"
+        f"<h1 style='font-size:1.1rem'>{len(items)} result(s) for "
+        f"&ldquo;{escape(search_string)}&rdquo;</h1>"
+        + capped
+        # Everything in ONE form, rendered server-side, no pagination and no
+        # script. See the docstring on why that is a hard requirement.
+        + f'<form id="oci" method="POST" action="{escape(base, quote=True)}" '
+        f'target="{escape(return_target, quote=True)}">'
+        + "".join(inputs)
+        + "<table style='border-collapse:collapse;width:100%'>"
+        "<tr><th align='left'>Description</th><th align='left'>Part</th>"
+        "<th align='right'>Price</th><th align='left'>Unit</th></tr>"
+        + rows
+        + "</table>"
+        # Deliberately a plain button and NOT a script. SRM submits this form
+        # itself once the user picks from the merged list.
+        + "<p><input type='submit' value='Transfer all results'></p>"
+        "</form></body></html>",
+        advisories,
+    )
