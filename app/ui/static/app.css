@@ -1,0 +1,445 @@
+/* =========================================================================
+   PunchOut Sandbox — design system
+   =========================================================================
+
+   WHO THIS IS FOR, AND WHAT THAT IMPLIES
+
+   The audience (RESEARCH.md §B) is a developer wiring a buyer-side punchout
+   client, or an ERP implementation consultant. They arrive mid-problem,
+   usually annoyed, often having already lost a day. They do not want a
+   product tour; they want an endpoint and a verdict.
+
+   Three consequences run through everything below:
+
+   1. CREDIBILITY OVER CHARM. BRIEF.md §3 warns that cheap signalling kills
+      this with the enterprise reader. So: no gradients, no illustration, no
+      rounded-everything, no marketing voice. The visual language is closer to
+      a piece of test equipment than a SaaS landing page.
+
+   2. THE VERDICT IS THE INTERFACE. Pass/fail must be readable across a room,
+      and must never rely on colour alone — a red dot and a green dot are the
+      same dot to a deuteranopic reader, and this audience skews heavily male
+      and therefore ~8% colourblind. Every status carries a glyph and a word
+      as well as a hue.
+
+   3. XML IS CONTENT, NOT DECORATION. People will read raw documents here for
+      minutes at a time. The mono stack, line height and syntax colours are
+      tuned for sustained reading, and the document pane is the only element
+      on the page allowed to be large.
+
+   THEMING. Full light/dark support, tokens only. Light is defined on bare
+   :root, dark is redefined under both prefers-color-scheme and [data-theme],
+   so a manual toggle wins in either direction and the system default still
+   works with no attribute set at all.
+   ========================================================================= */
+
+:root {
+  /* Surfaces, from furthest back to closest. */
+  --bg:            #fbfbfa;
+  --surface:       #ffffff;
+  --surface-sunk:  #f4f4f2;
+  --surface-raised:#ffffff;
+
+  /* Ink. Not pure black — #111 on #fff is ~19:1 and reads harsh at length. */
+  --ink:           #1b1b19;
+  --ink-muted:     #5c5c56;
+  --ink-faint:     #8a8a82;
+
+  --line:          #e3e3df;
+  --line-strong:   #cfcfc9;
+
+  /* One accent, used sparingly. Deep indigo reads as instrument, not brand. */
+  --accent:        #3b4ba8;
+  --accent-hover:  #2f3c88;
+  --accent-wash:   #eef0fb;
+
+  /* Verdict palette. Chosen for >=4.5:1 on their own wash backgrounds, and
+     distinguishable under deuteranopia (the greens sit yellow-ward, the reds
+     sit magenta-ward, rather than meeting in a muddy brown). */
+  --pass:          #1f6f43;
+  --pass-wash:     #e8f4ec;
+  --fail:          #a32020;
+  --fail-wash:     #fbecec;
+  --warn:          #8a5a00;
+  --warn-wash:     #fdf3e2;
+  --info:          #2a5f80;
+  --info-wash:     #e9f2f7;
+
+  --radius:        6px;
+  --radius-lg:     10px;
+
+  /* A real UI stack, then a real mono stack. The mono list leads with the
+     faces that ship on developer machines and have a slashed zero — telling
+     0 from O matters when the thing on screen is a part number. */
+  --font-ui: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+             Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code",
+               Menlo, Consolas, "Liberation Mono", monospace;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.05);
+  --shadow-md: 0 2px 8px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.04);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:            #131315;
+    --surface:       #1a1a1d;
+    --surface-sunk:  #232327;
+    --surface-raised:#212125;
+
+    --ink:           #e9e9e6;
+    --ink-muted:     #a3a39c;
+    --ink-faint:     #75756e;
+
+    --line:          #2e2e33;
+    --line-strong:   #43434a;
+
+    --accent:        #8f9ce8;
+    --accent-hover:  #a6b1ee;
+    --accent-wash:   #22243a;
+
+    --pass:          #6cc48d;
+    --pass-wash:     #16281d;
+    --fail:          #f08a8a;
+    --fail-wash:     #2e1a1a;
+    --warn:          #e0b062;
+    --warn-wash:     #2c2214;
+    --info:          #7fb6d6;
+    --info-wash:     #16242e;
+
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+    --shadow-md: 0 2px 10px rgba(0,0,0,.5), 0 1px 2px rgba(0,0,0,.3);
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg:            #131315;
+  --surface:       #1a1a1d;
+  --surface-sunk:  #232327;
+  --surface-raised:#212125;
+  --ink:           #e9e9e6;
+  --ink-muted:     #a3a39c;
+  --ink-faint:     #75756e;
+  --line:          #2e2e33;
+  --line-strong:   #43434a;
+  --accent:        #8f9ce8;
+  --accent-hover:  #a6b1ee;
+  --accent-wash:   #22243a;
+  --pass:          #6cc48d;
+  --pass-wash:     #16281d;
+  --fail:          #f08a8a;
+  --fail-wash:     #2e1a1a;
+  --warn:          #e0b062;
+  --warn-wash:     #2c2214;
+  --info:          #7fb6d6;
+  --info-wash:     #16242e;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-md: 0 2px 10px rgba(0,0,0,.5), 0 1px 2px rgba(0,0,0,.3);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:hover { color: var(--accent-hover); }
+
+h1, h2, h3 { line-height: 1.25; letter-spacing: -0.011em; margin: 0 0 .4em; }
+h1 { font-size: 1.75rem; font-weight: 640; }
+h2 { font-size: 1.2rem;  font-weight: 620; }
+h3 { font-size: 1rem;    font-weight: 620; }
+
+code, pre, .mono { font-family: var(--font-mono); font-size: 13px; }
+
+/* ---------- layout ---------- */
+.shell { display: flex; min-height: 100vh; }
+
+.sidebar {
+  width: 232px; flex: 0 0 232px;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  padding: 18px 14px;
+  display: flex; flex-direction: column; gap: 22px;
+}
+
+.main { flex: 1; min-width: 0; padding: 28px 34px 64px; }
+.main-wide { max-width: 1180px; }
+
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 650; letter-spacing: -.02em; }
+.brand-mark {
+  width: 26px; height: 26px; border-radius: 5px;
+  background: var(--accent); color: #fff;
+  display: grid; place-items: center;
+  font-family: var(--font-mono); font-size: 14px; font-weight: 700;
+  flex: 0 0 26px;
+}
+.brand-sub { font-size: 11px; color: var(--ink-faint); font-weight: 500; letter-spacing: .04em; text-transform: uppercase; }
+
+.nav { display: flex; flex-direction: column; gap: 1px; }
+.nav-label {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--ink-faint); font-weight: 600; margin: 12px 0 5px 8px;
+}
+.nav a {
+  display: flex; align-items: center; gap: 9px;
+  padding: 6px 9px; border-radius: var(--radius);
+  color: var(--ink-muted); text-decoration: none; font-size: 13.5px;
+}
+.nav a:hover { background: var(--surface-sunk); color: var(--ink); }
+.nav a.active { background: var(--accent-wash); color: var(--accent); font-weight: 550; }
+
+/* ---------- cards ---------- */
+.card {
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-sm);
+}
+.card + .card { margin-top: 16px; }
+.card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.card-title { font-size: .95rem; font-weight: 620; margin: 0; }
+.card-note { font-size: 12.5px; color: var(--ink-muted); margin: -6px 0 14px; }
+
+.grid { display: grid; gap: 16px; }
+.grid-2 { grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); }
+.grid-3 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+
+/* ---------- verdict ----------
+   The single most important component. Glyph + word + colour, never colour
+   alone. `.verdict-lg` is the session-inspector hero; `.pill` is the inline
+   form used in lists. */
+.verdict-lg {
+  display: flex; align-items: center; gap: 14px;
+  padding: 16px 18px; border-radius: var(--radius-lg);
+  border: 1px solid transparent;
+}
+.verdict-lg .glyph {
+  width: 34px; height: 34px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 17px; font-weight: 700;
+  flex: 0 0 34px; color: #fff;
+}
+.verdict-lg .headline { font-weight: 640; font-size: 1.02rem; }
+.verdict-lg .detail { font-size: 13px; color: var(--ink-muted); }
+
+.verdict-pass { background: var(--pass-wash); border-color: color-mix(in srgb, var(--pass) 26%, transparent); }
+.verdict-pass .glyph { background: var(--pass); }
+.verdict-fail { background: var(--fail-wash); border-color: color-mix(in srgb, var(--fail) 26%, transparent); }
+.verdict-fail .glyph { background: var(--fail); }
+.verdict-warn { background: var(--warn-wash); border-color: color-mix(in srgb, var(--warn) 26%, transparent); }
+.verdict-warn .glyph { background: var(--warn); }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px; border-radius: 20px;
+  font-size: 11.5px; font-weight: 600; letter-spacing: .01em;
+  white-space: nowrap;
+}
+.pill-pass { background: var(--pass-wash); color: var(--pass); }
+.pill-fail { background: var(--fail-wash); color: var(--fail); }
+.pill-warn { background: var(--warn-wash); color: var(--warn); }
+.pill-info { background: var(--info-wash); color: var(--info); }
+.pill-idle { background: var(--surface-sunk); color: var(--ink-muted); }
+
+/* ---------- findings ----------
+   A finding is read in one pass: severity, what, where, what to do. The
+   left border carries severity so a long list is scannable without reading. */
+.finding {
+  border-left: 3px solid var(--line-strong);
+  background: var(--surface-sunk);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: 11px 14px; margin-bottom: 9px;
+}
+.finding-error   { border-left-color: var(--fail); }
+.finding-advisory{ border-left-color: var(--warn); }
+.finding-top { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; margin-bottom: 3px; }
+.finding-code { font-family: var(--font-mono); font-size: 11px; color: var(--ink-faint); }
+.finding-msg { font-size: 13.5px; }
+.finding-hint {
+  font-size: 12.5px; color: var(--ink-muted);
+  margin-top: 6px; padding-left: 15px; position: relative;
+}
+.finding-hint::before { content: "→"; position: absolute; left: 0; color: var(--ink-faint); }
+
+/* ---------- document viewer ----------
+   The one element allowed to dominate. Wide content scrolls inside its own
+   box so the page body never scrolls sideways. */
+.doc {
+  background: var(--surface-sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.doc-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 7px 12px; background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  font-size: 12px; color: var(--ink-muted);
+}
+.doc-body { margin: 0; padding: 13px 15px; overflow-x: auto; max-height: 460px; overflow-y: auto; line-height: 1.6; }
+.doc-body code { display: block; white-space: pre; }
+
+/* XML syntax colours — low-saturation so the structure reads and the values
+   stand out, rather than a rainbow where nothing is emphasised. */
+.x-tag  { color: var(--accent); }
+.x-attr { color: var(--info); }
+.x-val  { color: var(--pass); }
+.x-txt  { color: var(--ink); }
+.x-decl { color: var(--ink-faint); font-style: italic; }
+.x-err  { background: var(--fail-wash); border-bottom: 2px wavy var(--fail); }
+
+/* ---------- flow timeline ----------
+   The punchout round trip as a vertical sequence. Direction matters more
+   than time here, so each step states who sent what to whom. */
+.flow { position: relative; padding-left: 26px; }
+.flow::before {
+  content: ""; position: absolute; left: 8px; top: 6px; bottom: 6px;
+  width: 2px; background: var(--line);
+}
+.flow-step { position: relative; padding: 0 0 18px; }
+.flow-step::before {
+  content: ""; position: absolute; left: -22px; top: 5px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--surface); border: 2px solid var(--line-strong);
+}
+.flow-step.ok::before   { border-color: var(--pass); background: var(--pass); }
+.flow-step.bad::before  { border-color: var(--fail); background: var(--fail); }
+.flow-step.wait::before { border-color: var(--accent); background: var(--surface); }
+.flow-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.flow-dir {
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--ink-faint); letter-spacing: .02em;
+}
+.flow-title { font-weight: 580; font-size: 13.5px; }
+.flow-meta { font-size: 12px; color: var(--ink-muted); margin-top: 1px; }
+
+/* ---------- tables ---------- */
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th {
+  text-align: left; font-weight: 600; font-size: 11.5px;
+  text-transform: uppercase; letter-spacing: .05em; color: var(--ink-faint);
+  padding: 7px 11px; border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+td { padding: 9px 11px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ---------- forms & buttons ---------- */
+label { display: block; font-size: 12.5px; font-weight: 560; margin-bottom: 4px; }
+input[type=text], input[type=number], input[type=email], select, textarea {
+  width: 100%; padding: 7px 10px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius);
+  background: var(--surface); color: var(--ink);
+  font-family: inherit; font-size: 13.5px;
+}
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent);
+}
+.field { margin-bottom: 13px; }
+.field-hint { font-size: 12px; color: var(--ink-muted); margin-top: 4px; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 14px; border-radius: var(--radius);
+  border: 1px solid transparent; background: var(--accent); color: #fff;
+  font-family: inherit; font-size: 13.5px; font-weight: 560;
+  cursor: pointer; text-decoration: none;
+}
+.btn:hover { background: var(--accent-hover); color: #fff; }
+.btn-secondary { background: var(--surface); color: var(--ink); border-color: var(--line-strong); }
+.btn-secondary:hover { background: var(--surface-sunk); color: var(--ink); }
+.btn-sm { padding: 4px 10px; font-size: 12.5px; }
+.btn-row { display: flex; gap: 9px; flex-wrap: wrap; }
+
+/* ---------- copyable endpoint ----------
+   Every screen that shows a URL or credential uses this. It exists because
+   the single most common action on this site is "copy that and paste it
+   into my config". */
+.copyfield {
+  display: flex; align-items: stretch;
+  border: 1px solid var(--line-strong); border-radius: var(--radius);
+  background: var(--surface-sunk); overflow: hidden;
+}
+.copyfield code {
+  flex: 1; padding: 8px 11px; overflow-x: auto; white-space: nowrap;
+  display: block; color: var(--ink);
+}
+.copyfield button {
+  border: none; border-left: 1px solid var(--line-strong);
+  background: var(--surface); color: var(--ink-muted);
+  padding: 0 13px; cursor: pointer; font-size: 12px; font-weight: 560;
+  font-family: inherit; white-space: nowrap;
+}
+.copyfield button:hover { background: var(--surface-sunk); color: var(--ink); }
+
+/* ---------- catalogue (the storefront) ---------- */
+.prod-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(228px, 1fr)); }
+.prod {
+  background: var(--surface-raised); border: 1px solid var(--line);
+  border-radius: var(--radius-lg); padding: 14px; display: flex; flex-direction: column; gap: 7px;
+}
+.prod:hover { border-color: var(--line-strong); box-shadow: var(--shadow-md); }
+.prod-thumb {
+  height: 96px; border-radius: var(--radius); background: var(--surface-sunk);
+  display: grid; place-items: center; color: var(--ink-faint); font-size: 30px;
+}
+.prod-name { font-size: 13.5px; font-weight: 570; line-height: 1.35; }
+.prod-sku { font-family: var(--font-mono); font-size: 11px; color: var(--ink-faint); }
+.prod-price { font-size: 15px; font-weight: 640; font-variant-numeric: tabular-nums; }
+.prod-foot { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding-top: 7px; }
+
+.taxo {
+  font-family: var(--font-mono); font-size: 10.5px;
+  background: var(--surface-sunk); color: var(--ink-muted);
+  padding: 1px 6px; border-radius: 3px; border: 1px solid var(--line);
+}
+
+/* ---------- misc ---------- */
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.stat-value { font-size: 1.5rem; font-weight: 660; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.stat-label { font-size: 12px; color: var(--ink-muted); }
+
+.muted { color: var(--ink-muted); }
+.faint { color: var(--ink-faint); }
+.small { font-size: 12.5px; }
+.mt-0 { margin-top: 0; } .mb-0 { margin-bottom: 0; }
+.stack > * + * { margin-top: 14px; }
+
+.banner {
+  display: flex; gap: 11px; padding: 12px 15px;
+  border-radius: var(--radius); font-size: 13.5px;
+  border: 1px solid transparent;
+}
+.banner-info { background: var(--info-wash); border-color: color-mix(in srgb, var(--info) 24%, transparent); }
+.banner-warn { background: var(--warn-wash); border-color: color-mix(in srgb, var(--warn) 24%, transparent); }
+
+/* Every generated artifact says so. BRIEF.md §6 — synthetic documents must
+   be unmistakable as test artifacts outside the sandbox as well as in it. */
+.testmark {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--ink-faint);
+  border: 1px dashed var(--line-strong); border-radius: 3px;
+  padding: 1px 7px; display: inline-block;
+}
+
+@media (max-width: 860px) {
+  .shell { flex-direction: column; }
+  .sidebar {
+    width: auto; flex: none; flex-direction: row; align-items: center;
+    justify-content: space-between; border-right: none;
+    border-bottom: 1px solid var(--line); padding: 11px 16px; gap: 12px;
+  }
+  .sidebar .nav { flex-direction: row; overflow-x: auto; gap: 3px; }
+  .sidebar .nav-label { display: none; }
+  .main { padding: 20px 16px 48px; }
+}

@@ -1,0 +1,5 @@
+aws-cdk-lib>=2.140.0
+constructs>=10.3.0
+# deploy_cloudflare_dns.py only — not a Lambda dependency.
+requests>=2.31.0
+boto3>=1.34.0

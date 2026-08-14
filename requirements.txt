@@ -1,0 +1,19 @@
+# Runtime dependencies for the Lambda image (see Dockerfile).
+
+# THE reason this is a container image. lxml is the only maintained Python
+# library that validates against a DTD; `defusedxml` and stdlib ElementTree
+# do not, which is precisely the gap BRIEF.md §2 describes.
+lxml>=5.2.0
+
+# Parsing untrusted XML safely — same library, same posture, as Xenia's
+# services/procurement/xml_safe.py. lxml does the VALIDATING; defusedxml does
+# the first, hostile-input PARSE. See app/xml_safe.py for why both.
+defusedxml>=0.7.1
+
+pydantic>=2.7.0
+jinja2>=3.1.4
+boto3>=1.34.0
+
+# Watermarked PDF invoices (BRIEF.md §6 — every generated PDF is marked as a
+# test artifact).
+reportlab>=4.2.0

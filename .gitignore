@@ -1,0 +1,21 @@
+# Secrets — never committed. See infra/scripts/deploy_cloudflare_dns.py.
+.env
+infra/.env
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# CDK
+cdk.out/
+infra/cdk.out/
+.cdk.staging/
+
+# OS
+.DS_Store
