@@ -271,6 +271,48 @@ Directly implementable one-click break cases, each with a documented source:
 16. `operationAllowed="create"` followed by an `edit` attempt (expect `412`)
 17. Fractional, zero and negative quantities
 
+## 6a. The differ — what the headline feature should actually be
+
+The strongest conclusion from this research is architectural, and it changes
+what we build first.
+
+**Every one of the most damaging documented failures is silent.** JAGGAER
+mapping an unrecognised UOM to `EA` (so `BX` "box of 100" becomes 100 each).
+JAGGAER discarding the supplier's `<Total>` and recomputing it. Oracle Fusion
+defaulting an unmapped classification to the catalogue's default category, and
+an invalid `itemClassification` silently becoming Goods. Dell truncating
+ship-to fields at 30 characters. OCI truncating every description at 40.
+Leading-zero loss on UNSPSC and DUNS. Mid-multibyte truncation producing
+invalid UTF-8. Price-rounding drift.
+
+**No error-injection test will ever surface any of them**, because nothing
+errors. The document is accepted; the data is wrong.
+
+What catches them is a **round-trip differ**: capture what the cart sent,
+capture what comes back on the `OrderRequest`, and diff every field. The spec
+even hands us the rule to enforce — *"`ItemDetail` data (with the possible
+exception of `Extrinsic` elements) contained within `ItemIn` elements must not
+be removed when converting from `ItemIn` to `ItemOut`"* (see
+`fulfilment-documents.md` §6).
+
+Classify each field's outcome into four buckets:
+
+| Outcome | Meaning |
+|---|---|
+| **Reject loudly** | good — the buyer refused and said why |
+| **Reject vaguely** | poor UX, but safe |
+| **Accept and corrupt** | **dangerous** — the thing we exist to catch |
+| **Accept and preserve** | correct |
+
+This reframes BRIEF.md §2. The "independent judge" the brief identified as the
+sellable thing is, concretely, **the differ** — and it is also among the
+cheapest components to build, because it needs no new protocol knowledge, only
+both halves of a round trip that the sandbox already sees. It is also the one
+thing no existing tool can do: every free tool in RESEARCH.md sees only one
+side of the exchange.
+
+Build it before the break-scenario library.
+
 ## 7. Sources not yet retrieved
 
 Cisco's cXML guide (403 to direct fetch) documents a "first 50 characters

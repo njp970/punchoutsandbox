@@ -1,0 +1,64 @@
+{#
+  Base layout for every PunchOut Sandbox page.
+
+  The sidebar carries navigation and, at its foot, the support link. Placement
+  is deliberate: BRIEF.md §8 decided this is a FREE tool, not a product, so
+  there is no pricing page, no upgrade prompt and no paywall anywhere. A
+  support link sitting quietly below the nav is the honest way to accept
+  goodwill from people the tool actually helped — it asks nothing of a
+  first-time visitor mid-debugging, which is when every other product would
+  interrupt them.
+
+  It is `rel="noopener"` and `target="_blank"` because it leaves the site, and
+  it is NOT styled as a primary button. A free diagnostic tool that shouts for
+  money reads as the hobby project BRIEF.md §3 warns the enterprise reader is
+  already suspicious of.
+#}
+<div class="shell">
+  <aside class="sidebar">
+    <div>
+      <a class="brand" href="/" style="text-decoration:none;color:inherit">
+        <span class="brand-mark" aria-hidden="true">&lt;/&gt;</span>
+        <span>
+          PunchOut Sandbox
+          <span class="brand-sub" style="display:block">virtual supplier</span>
+        </span>
+      </a>
+    </div>
+
+    <nav class="nav">
+      <div class="nav-label">Test</div>
+      <a href="/console"   class="{{ 'active' if nav == 'console' }}">Console</a>
+      <a href="/sessions"  class="{{ 'active' if nav == 'sessions' }}">Sessions</a>
+      <a href="/validate"  class="{{ 'active' if nav == 'validate' }}">Validate a document</a>
+
+      <div class="nav-label">Supplier</div>
+      <a href="/shop"      class="{{ 'active' if nav == 'shop' }}">Catalogue</a>
+      <a href="/documents" class="{{ 'active' if nav == 'documents' }}">Documents</a>
+      <a href="/scenarios" class="{{ 'active' if nav == 'scenarios' }}">Break scenarios</a>
+
+      <div class="nav-label">Reference</div>
+      <a href="/docs"      class="{{ 'active' if nav == 'docs' }}">Docs</a>
+    </nav>
+
+    {# Pushed to the bottom on desktop; inline on mobile, where the sidebar
+       becomes a horizontal bar and `margin-top:auto` has nothing to push
+       against. #}
+    <div class="sidebar-foot">
+      <a class="support-link" href="https://buymeacoffee.com/neilparkes"
+         target="_blank" rel="noopener noreferrer">
+        <span aria-hidden="true">☕</span>
+        <span>Buy me a coffee</span>
+      </a>
+      <p class="sidebar-foot-note">
+        Free, and staying free. This keeps it hosted.
+      </p>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="main-wide">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>

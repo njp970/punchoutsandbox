@@ -423,6 +423,23 @@ input:focus, select:focus, textarea:focus {
 .banner-info { background: var(--info-wash); border-color: color-mix(in srgb, var(--info) 24%, transparent); }
 .banner-warn { background: var(--warn-wash); border-color: color-mix(in srgb, var(--warn) 24%, transparent); }
 
+/* ---------- support link ----------
+   Sits at the foot of the sidebar. Deliberately understated: this is a free
+   tool (BRIEF.md §8) with no pricing page and no upgrade path, so the ask has
+   to read as "if this saved you a day" rather than as a conversion funnel.
+   Styled as a quiet bordered chip, never as a primary button — the accent
+   colour is reserved for things the user came here to do. */
+.sidebar-foot { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--line); }
+.support-link {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 11px; border-radius: var(--radius);
+  border: 1px solid var(--line-strong); background: var(--surface);
+  color: var(--ink-muted); text-decoration: none;
+  font-size: 12.5px; font-weight: 550;
+}
+.support-link:hover { background: var(--surface-sunk); color: var(--ink); border-color: var(--ink-faint); }
+.sidebar-foot-note { font-size: 11.5px; color: var(--ink-faint); margin: 7px 0 0; line-height: 1.4; }
+
 /* Every generated artifact says so. BRIEF.md §6 — synthetic documents must
    be unmistakable as test artifacts outside the sandbox as well as in it. */
 .testmark {
@@ -441,5 +458,10 @@ input:focus, select:focus, textarea:focus {
   }
   .sidebar .nav { flex-direction: row; overflow-x: auto; gap: 3px; }
   .sidebar .nav-label { display: none; }
+  /* margin-top:auto has nothing to push against in a row, so the foot would
+     otherwise collapse against the nav. The note is dropped rather than
+     wrapped — a horizontal bar has no room for a second line. */
+  .sidebar-foot { margin-top: 0; padding-top: 0; border-top: none; flex: 0 0 auto; }
+  .sidebar-foot-note { display: none; }
   .main { padding: 20px 16px 48px; }
 }
