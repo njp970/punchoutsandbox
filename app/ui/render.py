@@ -26,5 +26,16 @@ env = Environment(
 )
 
 
+#: Available to every template without each route having to pass it. Used for
+#: canonical and Open Graph URLs, which must be absolute.
+env.globals["site_url"] = os.environ.get("SITE_URL", "https://punchoutsandbox.com")
+
+
 def render(template: str, **context) -> str:
+    """Render a template.
+
+    `canonical` is a path, not a URL, and defaults to absent — a page with no
+    canonical is better than one asserting the wrong URL. Routes that are
+    publicly indexable set it; gated pages have no reason to."""
+    context.setdefault("canonical", None)
     return env.get_template(template).render(**context)

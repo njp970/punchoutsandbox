@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Validate a cXML document{% endblock %}
+{% block description %}Paste any cXML document and get a verdict against the real DTDs. Errors kept separate from advisories, free, and usable without signing up.{% endblock %}
 {% block content %}
 
 <h1>Validate a cXML document</h1>
@@ -132,7 +133,11 @@
    document is being rejected is at their least patient; asking for an email
    before they get their answer would make this useless for the drive-by case
    that is most of its value. #}
-<div class="banner banner-info" style="margin-top:16px">
+{# The class is a test handle as much as a style hook: tests/test_signup.py
+   asserts this element is absent for a signed-in visitor, and asserting on a
+   sentence of ordinary English broke the day a meta description reused the
+   same words. #}
+<div class="banner banner-info signup-nudge" style="margin-top:16px">
   <span aria-hidden="true">&#9432;</span>
   <div>
     This validator is free and open &mdash; no account needed.

@@ -23,3 +23,6 @@ infra/cdk.out/
 
 # Lambda build output (scripts/build_asset.sh)
 infra/build/
+
+# Build-time copy of docs/reference (see scripts/build_asset.sh)
+app/reference_docs/*.md

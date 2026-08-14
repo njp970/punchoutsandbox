@@ -20,7 +20,28 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}PunchOut Sandbox{% endblock %}</title>
+{#
+  One description per page, set by the route. A search result's snippet is
+  written here or it is written by Google from whatever text it finds first,
+  which on this site is a navigation menu.
+#}
+<meta name="description" content="{% block description %}A free hosted cXML and OCI virtual supplier for testing e-procurement punchout integrations, with real DTD validation.{% endblock %}">
+{#
+  Canonical from the route rather than from the request, so a URL reached with
+  a ?session= token or a trailing slash does not become a second indexed copy
+  of the same page.
+#}
+{% if canonical %}<link rel="canonical" href="{{ site_url }}{{ canonical }}">{% endif %}
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="PunchOut Sandbox">
+<meta property="og:title" content="{{ self.title() }}">
+<meta property="og:description" content="{{ self.description() }}">
+{% if canonical %}<meta property="og:url" content="{{ site_url }}{{ canonical }}">{% endif %}
+{# Summary card, no image: a fabricated screenshot would be worse than none. #}
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/app.css">
+{% block head_extra %}{% endblock %}
 </head>
 <body>
 <div class="shell">
@@ -35,6 +56,8 @@
     </div>
 
     <nav class="nav">
+      <a href="/" class="{{ 'active' if nav == 'home' }}">Home</a>
+
       <div class="nav-label">Supplier</div>
       <a href="/shop" class="{{ 'active' if nav == 'shop' }}">Catalogue</a>
       <a href="/cart" class="{{ 'active' if nav == 'cart' }}">
@@ -47,6 +70,7 @@
       <a href="/sessions" class="{{ 'active' if nav == 'sessions' }}">Sessions</a>
       <a href="/validate" class="{{ 'active' if nav == 'validate' }}">Validate a document</a>
       <a href="/docs" class="{{ 'active' if nav == 'docs' }}">Docs</a>
+      <a href="/reference" class="{{ 'active' if nav == 'reference' }}">Reference</a>
       <a href="/settings" class="{{ 'active' if nav == 'settings' }}">Settings</a>
       <a href="/contact" class="{{ 'active' if nav == 'contact' }}">Contact</a>
     </nav>

@@ -76,13 +76,13 @@ def _numbered(document: str, error_lines: set[int]) -> list[dict]:
 
 def view_validate(request: Request) -> Response:
     if request.method == "GET":
-        return html(render("validate.html", nav="validate", sample=_SAMPLE,
+        return html(render("validate.html", nav="validate", canonical="/validate", sample=_SAMPLE,
                            document="", report=None, lines=None, rejected=None,
                            signed_in=current_tenant(request) is not None))
 
     document = request.form().get("document", "").strip()
     if not document:
-        return html(render("validate.html", nav="validate", sample=_SAMPLE,
+        return html(render("validate.html", nav="validate", canonical="/validate", sample=_SAMPLE,
                            document="", report=None, lines=None,
                            signed_in=current_tenant(request) is not None,
                            rejected="Nothing to validate — paste a document first."))

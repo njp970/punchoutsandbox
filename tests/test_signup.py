@@ -200,7 +200,13 @@ st, body, _ = go("/validate", "POST",
                  urlencode({"document": "<not-cxml/>"}).encode(),
                  cookies=[f"pst={token}"])
 check("signed-in validation works", st == 200, f"status {st}")
-check("and the signup prompt is gone", "no account needed" not in body)
+# Asserted on the prompt's own markup rather than a phrase from its prose.
+# The phrase version broke the day a meta description happened to reuse the
+# same words, which is a false failure a substring check will always be prone
+# to when the string is ordinary English.
+check("and the signup prompt is gone",
+      'class="signup-nudge"' not in body,
+      "the soft prompt below the tool is for anonymous visitors only")
 
 tenants.reset_store(None)
 sessions.reset_store(None)

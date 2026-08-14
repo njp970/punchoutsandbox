@@ -24,8 +24,8 @@ from typing import Optional
 from urllib.parse import quote
 
 from . import (contact, delivery, inspector, mailer, order_request, orders,
-               orderflow, sessions, setup_request, signup, storefront,
-               telemetry, tenants)
+               orderflow, reference, sessions, setup_request, signup,
+               storefront, telemetry, tenants)
 from .catalogue.data import BY_SKU, search
 from .catalogue.taxonomy import normalise_uom
 from .cxml.punchout import (CartItem, build_cancel, build_empty_cart,
@@ -191,8 +191,95 @@ def _with_session(request: Request, mutate) -> Response:
 # Routes
 # --------------------------------------------------------------------------- #
 @router.get("/")
-def home(request: Request) -> Response:
-    return redirect("/shop")
+def landing(request: Request) -> Response:
+    """The one page a search engine sees first.
+
+    It used to be a 303 into /shop, which is GATED — so every crawler's first
+    and most important request landed on "Sign up to continue", and that is
+    what the site looked like to anyone who had not already found it. A
+    redirect into a wall is not a homepage."""
+    session, cart = get_session(request)
+    return html(render(
+        "landing.html", nav="home", session=session, cart_count=len(cart),
+        canonical="/", reference_pages=reference.PAGES))
+
+
+@router.get("/reference")
+def reference_index(request: Request) -> Response:
+    session, cart = get_session(request)
+    return html(render("reference_index.html", nav="reference",
+                       session=session, cart_count=len(cart),
+                       canonical="/reference", pages=reference.PAGES))
+
+
+@router.get("/reference/{slug}")
+def reference_page(request: Request) -> Response:
+    slug = request.params.get("slug", "")
+    page = reference.BY_SLUG.get(slug)
+    body = reference.body(slug) if page else None
+    if page is None or body is None:
+        return Response(status=404, body="Not found", content_type="text/plain")
+    session, cart = get_session(request)
+    return html(render("reference_page.html", nav="reference", page=page,
+                       body=body, session=session, cart_count=len(cart),
+                       canonical=f"/reference/{slug}"))
+
+
+@router.get("/robots.txt")
+def robots(request: Request) -> Response:
+    """Both this and /sitemap.xml previously fell through to the signup gate
+    and answered 200 with an HTML page — a crawler asking for robots.txt got a
+    signup form, which is worse than a clean 404.
+
+    Gated paths are disallowed not to hide them but because a crawler that
+    follows them indexes the gate under a dozen different URLs, and a site
+    whose search results are all the same signup form looks like nothing."""
+    site = os.environ.get("SITE_URL", "https://punchoutsandbox.com")
+    lines = [
+        "User-agent: *",
+        "Allow: /",
+        "",
+        "# Gated — a crawler only ever sees the signup form behind these.",
+        "Disallow: /shop",
+        "Disallow: /cart",
+        "Disallow: /orders",
+        "Disallow: /settings",
+        "Disallow: /sessions",
+        "Disallow: /console",
+        "Disallow: /product",
+        "",
+        "# Machine endpoints. Nothing to index and a POST is the only verb.",
+        "Disallow: /punchout/setup",
+        "Disallow: /oci/setup",
+        "Disallow: /order",
+        "",
+        f"Sitemap: {site}/sitemap.xml",
+        "",
+    ]
+    return Response(body="\n".join(lines), content_type="text/plain; charset=utf-8",
+                    headers={"cache-control": "public, max-age=3600"})
+
+
+@router.get("/sitemap.xml")
+def sitemap(request: Request) -> Response:
+    """Only the pages a crawler can actually read.
+
+    Listing a gated URL here would be asking Google to index the signup form,
+    which is the opposite of the point."""
+    site = os.environ.get("SITE_URL", "https://punchoutsandbox.com")
+    urls = ["/", "/docs", "/validate", "/reference", "/signup", "/contact"]
+    urls += [f"/reference/{page.slug}" for page in reference.PAGES]
+    entries = "".join(
+        # `priority` is ignored by Google and has been for years; it is
+        # omitted rather than fabricated. So is `lastmod`, which would be a
+        # guess — a wrong lastmod is worse than none, because it teaches a
+        # crawler to distrust the file.
+        f"<url><loc>{site}{path}</loc></url>" for path in urls)
+    body = ('<?xml version="1.0" encoding="UTF-8"?>'
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+            f"{entries}</urlset>")
+    return Response(body=body, content_type="application/xml; charset=utf-8",
+                    headers={"cache-control": "public, max-age=3600"})
 
 
 @router.get("/shop")
@@ -706,6 +793,7 @@ def docs(request: Request) -> Response:
     session, cart = get_session(request)
     return html(render(
         "docs.html", nav="docs", session=session, cart_count=len(cart),
+        canonical="/docs",
         site_url=os.environ.get("SITE_URL", "https://punchoutsandbox.com")))
 
 
@@ -741,7 +829,18 @@ def static(request: Request) -> Response:
         return Response(status=404, body="Not found", content_type="text/plain")
     with open(path, "rb") as handle:
         body = handle.read()
-    kind = "text/css" if name.endswith(".css") else "application/octet-stream"
+    # An SVG served as application/octet-stream is downloaded rather than
+    # rendered, so the favicon never appeared. Mapped explicitly rather than
+    # guessed, and anything unrecognised stays a download — a static directory
+    # that infers content types from filenames is one upload away from serving
+    # something as text/html.
+    kind = {
+        ".css": "text/css; charset=utf-8",
+        ".svg": "image/svg+xml",
+        ".png": "image/png",
+        ".ico": "image/x-icon",
+        ".woff2": "font/woff2",
+    }.get(os.path.splitext(name)[1], "application/octet-stream")
     return Response(body=body, content_type=kind,
                     headers={"cache-control": "public, max-age=300"})
 

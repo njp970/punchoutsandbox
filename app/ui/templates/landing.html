@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}PunchOut Sandbox — a free cXML and OCI test supplier{% endblock %}
+{% block description %}A free hosted virtual supplier for testing buyer-side punchout. Send a real PunchOutSetupRequest, shop a real catalogue, get a real cXML cart back, then run the order, confirmation, ship notice and invoice flow.{% endblock %}
+{% block head_extra %}
+{#
+  JSON-LD is data, not an executable script type, so `script-src 'none'` in
+  the CSP does not block it and search engines still read it.
+#}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "PunchOut Sandbox",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Any",
+  "url": "{{ site_url }}/",
+  "description": "A free hosted cXML and SAP OCI virtual supplier for testing buyer-side e-procurement punchout integrations, with validation against the real cXML DTDs.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "GBP" },
+  "featureList": [
+    "cXML PunchOutSetupRequest and PunchOutOrderMessage",
+    "SAP OCI call-up including DETAIL, VALIDATE and BACKGROUND_SEARCH",
+    "OrderRequest inbox",
+    "ConfirmationRequest, ShipNoticeRequest and InvoiceDetailRequest",
+    "Document validation against the real cXML DTDs",
+    "Multi-country tax calculation"
+  ]
+}
+</script>
+{% endblock %}
+{% block content %}
+
+<div style="max-width:68ch">
+  <h1>A supplier to test your punchout against</h1>
+  <p class="muted" style="margin-top:-4px;font-size:16px">
+    Free, hosted, and running right now. Point your buyer system at it and
+    find out what your documents actually look like to the other side.
+  </p>
+
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">The problem this solves</h2></div>
+    <p class="card-note" style="margin:0 0 12px">
+      Every free punchout tool runs the wrong way round. They simulate a
+      <strong>buyer</strong>, so a supplier can check their catalogue works.
+      If you are building the <strong>buyer</strong> side, there is nothing to
+      point at &mdash; so you end up testing your integration against itself.
+    </p>
+    <blockquote>
+      <p>
+        Round-tripping your own build and parse proves the two halves agree
+        with each other. It does not prove either one conforms. If both share
+        a misreading, every test passes and the first real supplier rejects
+        every document.
+      </p>
+    </blockquote>
+    <p class="card-note" style="margin:12px 0 0">
+      What is missing is an independent judge. This is one.
+    </p>
+  </div>
+
+  <div class="grid">
+    <div class="stat"><div class="stat-label">Protocols</div>
+      <div class="stat-value">cXML + OCI</div></div>
+    <div class="stat"><div class="stat-label">Jurisdictions</div>
+      <div class="stat-value">27</div></div>
+    <div class="stat"><div class="stat-label">Price</div>
+      <div class="stat-value">£0</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">What you can do with it</h2></div>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Punch out</th>
+            <td>POST a real <code>PunchOutSetupRequest</code>, get a
+                <code>StartPage</code>, shop a catalogue of 96 products with
+                genuine UNSPSC codes, and receive a conformant
+                <code>PunchOutOrderMessage</code> back.</td></tr>
+        <tr><th>Send an order</th>
+            <td>POST an <code>OrderRequest</code> and be told what is wrong
+                with it &mdash; including whether your header
+                <code>Total</code> reconciles with the sum of its lines.</td></tr>
+        <tr><th>Receive documents</th>
+            <td>Have order confirmations, ship notices and invoices POSTed to
+                your own cXML inbox, so you can test the half of the flow
+                nobody can normally test.</td></tr>
+        <tr><th>Validate anything</th>
+            <td>Paste any cXML document into
+                <a href="/validate">the validator</a> and get a verdict
+                against the real DTDs. No account needed.</td></tr>
+        <tr><th>Use SAP OCI</th>
+            <td>Full call-up support including <code>DETAIL</code>,
+                <code>VALIDATE</code> and <code>BACKGROUND_SEARCH</code>.</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="btn-row" style="margin:22px 0">
+    <a class="btn" href="/docs">Read the docs</a>
+    <a class="btn btn-secondary" href="/validate">Validate a document</a>
+    <a class="btn btn-secondary" href="/signup">Get free credentials</a>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">Reference: what actually breaks a punchout</h2></div>
+    <p class="card-note" style="margin:0 0 14px">
+      cXML imposes almost no length limits. Every limit that truncates your
+      data is imposed by the <em>buyer platform</em>, and none of them publish
+      it. These pages write down what we have been able to establish.
+    </p>
+    {% for page in reference_pages %}
+    <p style="margin:0 0 10px">
+      <a href="/reference/{{ page.slug }}"><strong>{{ page.title }}</strong></a><br>
+      <span class="muted">{{ page.blurb }}</span>
+    </p>
+    {% endfor %}
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">The honest limits</h2></div>
+    <div class="table-wrap">
+      <table>
+        <tr><th>It is a sandbox</th>
+            <td>Synthetic catalogue, invented companies, no SLA, no support
+                contract. Nothing you send is stored beyond a week and none of
+                it is looked at.</td></tr>
+        <tr><th>It stays free</th>
+            <td>There is no paid tier and no upgrade prompt. If it saves you a
+                day, there is a
+                <a href="https://buymeacoffee.com/neilparkes" target="_blank"
+                   rel="noopener noreferrer">coffee link</a>.</td></tr>
+        <tr><th>It is open source</th>
+            <td><a href="https://github.com/njp970/punchoutsandbox" target="_blank"
+                   rel="noopener noreferrer">github.com/njp970/punchoutsandbox</a>
+                &mdash; including every conformance rule it enforces.</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

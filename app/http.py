@@ -112,6 +112,22 @@ class Response:
 #: sites. Origin-only would still be safe, but no-referrer costs nothing here.
 SECURITY_HEADERS = {
     "x-content-type-options": "nosniff",
+    # =====================================================================
+    # WHY EVERYTHING IS UNCACHEABLE UNLESS IT SAYS OTHERWISE
+    # =====================================================================
+    # Cloudflare caches some extensions by default whatever the origin says,
+    # and `.txt` is one of them. When /robots.txt did not exist it fell
+    # through to the signup gate, Cloudflare cached that HTML for four hours,
+    # and it kept serving the gate to crawlers for hours after the real
+    # robots.txt was deployed.
+    #
+    # The general hazard is worse than that one URL. Nearly every page here
+    # varies by cookie — the punchout banner, the cart count, whether the
+    # signup prompt shows — so a shared cache holding any of them would serve
+    # one visitor's chrome to another. `no-store` by default means a page has
+    # to opt IN to being cached, and only three things do: the stylesheet,
+    # robots.txt and the sitemap, none of which vary by anything.
+    "cache-control": "no-store",
     "referrer-policy": "no-referrer",
     "content-security-policy": (
         "default-src 'none'; "

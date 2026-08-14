@@ -18,6 +18,11 @@ Open, always:
   /contact     a gate in front of "this tool is broken" would mean only
                people who already signed up could report that signing up
                is broken.
+  /reference   the published field-limit reference. Gating it would gate the
+               only content anybody searches for, which is the entire reason
+               a stranger ever arrives here.
+  /robots.txt  and /sitemap.xml. Both used to fall through to the gate and
+  /sitemap.xml answer 200 with an HTML signup form.
 
 Gated:
 
@@ -50,7 +55,7 @@ from .ui.render import render
 
 #: Paths reachable with no account. Prefix match; see `is_open`.
 OPEN_PATHS = ("/docs", "/signup", "/static/", "/favicon.ico", "/validate",
-              "/contact")
+              "/contact", "/reference", "/robots.txt", "/sitemap.xml")
 
 
 def is_open(path: str) -> bool:

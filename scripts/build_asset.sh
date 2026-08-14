@@ -57,6 +57,13 @@ python3 -m pip install \
 echo "==> copying application"
 cp -R "$ROOT/app" "$BUILD/app"
 
+# The reference pages are served from these files at runtime (app/reference.py),
+# so they are part of the application, not documentation that happens to sit
+# nearby. Copied under app/ rather than beside it so one path resolves both
+# locally and in the bundle.
+mkdir -p "$BUILD/app/reference_docs"
+cp "$ROOT/docs/reference/"*.md "$BUILD/app/reference_docs/"
+
 # Strip caches and test material. These are pure weight in a Lambda bundle and
 # __pycache__ in particular can carry host-architecture artefacts.
 find "$BUILD" -type d -name "__pycache__" -prune -exec rm -rf {} + 2>/dev/null || true

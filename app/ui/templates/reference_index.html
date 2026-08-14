@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}cXML and OCI reference — PunchOut Sandbox{% endblock %}
+{% block description %}Field limits, validation rules and failure modes for cXML and SAP OCI punchout, gathered from what buyer platforms actually do rather than what the schema allows.{% endblock %}
+{% block content %}
+<div style="max-width:68ch">
+  <h1>Reference</h1>
+  <p class="muted" style="margin-top:-4px">
+    The rules that break real integrations, as far as we have been able to
+    establish them. Almost none of this is published by the platforms that
+    impose it.
+  </p>
+
+  {% for page in pages %}
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title"><a href="/reference/{{ page.slug }}">{{ page.title }}</a></h2>
+    </div>
+    <p class="card-note" style="margin:0">{{ page.blurb }}</p>
+  </div>
+  {% endfor %}
+
+  <p class="muted">
+    Found something we have wrong, or a limit we have missed? That is the most
+    useful thing you can send &mdash; <a href="/contact">tell us</a>.
+  </p>
+</div>
+{% endblock %}

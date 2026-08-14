@@ -75,7 +75,8 @@ def _page(*, request: Request, error: Optional[str] = None, sent: bool = False,
     values = values or {}
     if tenant is not None and not values.get("email"):
         values = {**values, "email": tenant.email}
-    return html(render("contact.html", nav="contact", error=error, sent=sent,
+    return html(render("contact.html", nav="contact", canonical="/contact",
+                       error=error, sent=sent,
                        values=values, topics=TOPICS,
                        honeypot=HONEYPOT_FIELD,
                        signed_in=tenant is not None), status=status)
