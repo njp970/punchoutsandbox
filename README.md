@@ -79,6 +79,13 @@ RESEARCH.md          market evidence behind that verdict
 HOSTING.md           hosting plan, naming, and the AWS account layout
 ```
 
+## Integrating against it
+
+**[INTEGRATING.md](INTEGRATING.md)** is the quick start: credentials, the JSON
+API, the four integration points, and the five things that otherwise cost an
+afternoon. The [full documentation](https://punchoutsandbox.com/docs) goes
+deeper.
+
 ## For agents and scripts
 
 No browser needed at any point:
