@@ -17,10 +17,37 @@ comfortable default.
 
 Why UNSPSC and not ECLASS: ECLASS is not an open dataset. ECLASS e.V. asserts
 copyright over the dictionary and licenses redistribution — which is precisely
-what shipping a codeset inside a public repository would be. So this sandbox
-ships **no ECLASS code data at all**, while still exercising the multi-domain
-`Classification` element shape (see `ECLASS_PLACEHOLDER_DOMAIN` below). If a
-user wants real ECLASS values, they supply their own licensed dictionary.
+what shipping a codeset inside a public repository would be. Its Terms of Use
+§2.4 makes obtaining the data from anywhere other than four named sources
+unauthorised outright, and §5.2.1 makes "isolated use of the ECLASS structure"
+beyond a host application require a separate licence a downstream cloner will
+not have. So this sandbox ships **no ECLASS code data at all**, while still
+exercising the multi-domain `Classification` element shape (see
+`ECLASS_PLACEHOLDER_DOMAIN` below). If a user wants real ECLASS values, they
+supply their own licensed dictionary. ECLASS ToU §4.3.2 directs
+development-and-testing users to info@eclass.de — the intended, and probably
+free, route if we ever want real codes here.
+
+⚠️ UNSPSC IS NOT PERMISSIVELY LICENSED EITHER, and the position changed
+recently enough that most advice about it is stale:
+
+- **Governance moved back to UNDP on 2025-01-01**; GS1 US no longer manages
+  it. The official home is https://www.undp.org/unspsc.
+- **`unspsc.org` is now a squatted sweepstakes-casino affiliate site.** Do not
+  link to it. Note the cXML DTD and User's Guide both still point implementers
+  there, so that pointer in the vendored DTDs is dead and hostile.
+- UNDP publishes the full codeset free and without registration, but the only
+  applicable written terms (https://www.undp.org/copyright-terms-use) grant
+  "personal, non-commercial use, **without any right to resell or redistribute
+  them or to compile or create derivative works therefrom**."
+
+So neither standard grants redistribution. The reason UNSPSC is nonetheless
+what ships here is provenance: this data came from a US state government open
+-data publication, not from UNDP's own file, which is the least exposed of the
+available routes and is attributable to a publisher who chose to release it.
+That is a risk judgement, not a licence. Before this repository goes public,
+the cleanest fix is to replace the titles below with our own short
+descriptions and keep only the bare 8-digit codes, which are facts.
 
 Note `56101702` genuinely is spelled "accesories" in the official data. It is
 kept verbatim — a real catalogue contains real typos, and a harness whose data
