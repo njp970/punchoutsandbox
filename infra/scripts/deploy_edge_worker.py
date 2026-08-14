@@ -79,7 +79,22 @@ def main() -> int:
                       if o["OutputKey"].startswith("FunctionUrl"))
     print(f"origin  : {origin_url}")
 
-    edge_secret = os.environ.get("EDGE_SHARED_SECRET") or secrets.token_urlsafe(32)
+    # NO SILENT GENERATION. This line used to fall back to a fresh random
+    # secret whenever the variable was unset, and that is how the site once
+    # served an intermittent mix of 200s and 403s: the Worker and a transform
+    # rule each minted their own value and whichever ran last won. One value,
+    # stored in infra/.env, read by both this script and the CDK app.
+    edge_secret = os.environ.get("EDGE_SHARED_SECRET")
+    if not edge_secret:
+        suggestion = secrets.token_urlsafe(32)
+        raise SystemExit(
+            "EDGE_SHARED_SECRET is not set.\n\n"
+            "  This script will not invent one: the Lambda has to be given the "
+            "SAME value, and a secret that changes on every run guarantees the "
+            "two disagree.\n\n"
+            "  Add this to the gitignored infra/.env, then re-run, then "
+            "`cdk deploy`:\n\n"
+            f"    EDGE_SHARED_SECRET={suggestion}\n")
 
     session = requests.Session()
     session.headers.update(headers)
@@ -118,7 +133,10 @@ def main() -> int:
     # script accumulates duplicates that are awkward to reason about later.
     existing = _cf(session, "GET", f"/zones/{zone_id}/workers/routes")["result"]
     for route in existing:
-        if route.get("pattern", "").startswith(ZONE_NAME):
+        # `startswith` missed `www.punchoutsandbox.com/*`, so the cleanup
+        # skipped it and the re-create then collided with itself — the script
+        # was not idempotent for exactly one of its two routes.
+        if ZONE_NAME in route.get("pattern", ""):
             _cf(session, "DELETE", f"/zones/{zone_id}/workers/routes/{route['id']}")
 
     for pattern in (f"{ZONE_NAME}/*", f"www.{ZONE_NAME}/*"):
@@ -137,6 +155,9 @@ def main() -> int:
         Environment={"Variables": {**current, "EDGE_SHARED_SECRET": edge_secret}},
     )
     print(f"lambda  : EDGE_SHARED_SECRET set on {fn}")
+    print("          (the CDK stack also sets it from the same environment "
+          "variable, so a later `cdk deploy` restores it rather than "
+          "wiping it)")
     print("\nDone. The Worker rewrites Host to the origin, which is the whole")
     print("reason this exists — see its header comment.")
     return 0

@@ -31,8 +31,8 @@ from .catalogue.taxonomy import normalise_uom
 from .cxml.punchout import (CartItem, build_cancel, build_empty_cart,
                             build_punchout_order_message, render_return_form)
 from .oci import inbound as oci_in, outbound as oci_out
-from .http import (MethodNotAllowed, Request, Response, Router, html,
-                   parse_event, redirect, require_edge)
+from .http import (AUTOSUBMIT_CSP, MethodNotAllowed, Request, Response,
+                   Router, html, parse_event, redirect, require_edge)
 from .sessions import Session
 from .ui.render import render
 
@@ -66,15 +66,93 @@ def _cart_item(sku: str, quantity: int) -> CartItem:
 router = Router()
 
 
-#: Browsing without a punchout handshake still needs somewhere to put a cart.
-#: Anonymous carts are per-container and disposable ON PURPOSE — there is
-#: nowhere to return them to, so persisting them would cost storage for no
-#: benefit. Only real punchout sessions are worth a write.
-_ANONYMOUS_CART: dict[str, int] = {}
+#: Marks a cart that exists only so an anonymous browser has somewhere to put
+#: things. Never a punchout session: the templates key their punchout chrome
+#: off `get_session` returning None, and a browse holder must never light it up.
+BROWSE_PROTOCOL = "browse"
 
 
 def _token(request: Request) -> Optional[str]:
     return request.cookies.get("pos") or request.query.get("session")
+
+
+def _cart_context(request: Request, *, create: bool = False):
+    """Resolve who this browser is, for cart purposes. Memoised per request.
+
+    Returns `(punchout_session, holder)`. `holder` is the Session whose `cart`
+    dict should be mutated, and may be the punchout session itself, a browse
+    holder, or None when there is no cart and none is needed yet.
+
+    =====================================================================
+    THIS REPLACED A MODULE-LEVEL DICT, AND THE BUG WAS NOT SUBTLE
+    =====================================================================
+    Anonymous carts used to live in `_ANONYMOUS_CART`, a dict at module scope.
+    In Lambda that dict is shared by every request a warm container handles, so
+    two strangers browsing at the same time **saw each other's carts** — and
+    which stranger you got depended on which container answered. It is exactly
+    the bug `sessions.py` was written to fix, reintroduced one layer up because
+    an anonymous cart looked too unimportant to store.
+
+    It is stored now. The cost is one write per cart mutation by a
+    non-punchout visitor, which is the correct price for not leaking one
+    person's shopping to another.
+
+    `create=False` is what keeps that cheap: a read-only view of an empty cart
+    mints nothing, so the ordinary case of somebody reading /docs writes no
+    rows at all.
+    """
+    cached = getattr(request, "_cart_ctx", None)
+    if cached is not None and not (create and cached[1] is None):
+        return cached
+
+    punchout = None
+    token = _token(request)
+    if token:
+        found = sessions.store().get(token)
+        if found is not None and found.protocol != BROWSE_PROTOCOL:
+            punchout = found
+
+    holder = punchout
+    if holder is None:
+        browse_token = request.cookies.get("pab")
+        if browse_token:
+            existing = sessions.store().get(browse_token)
+            if existing is not None and existing.protocol == BROWSE_PROTOCOL:
+                holder = existing
+        if holder is None and create:
+            holder = Session(
+                session_id=secrets.token_urlsafe(18),
+                buyer_name="", protocol=BROWSE_PROTOCOL, return_url="")
+            sessions.store().put(holder)
+            _queue_cookie(
+                request,
+                f"pab={holder.session_id}; Path=/; HttpOnly; Secure; "
+                "SameSite=Lax")
+
+    # A StartPage URL carries ?session=…; every link on the storefront does
+    # not. Without this the punchout session survived exactly one page view,
+    # the banner vanished on the first click, and the cart return answered
+    # "no punchout session" — the core flow, broken for real browsers and
+    # invisible to /console, which sets the cookie itself.
+    if punchout is not None and request.cookies.get("pos") != punchout.session_id:
+        _queue_cookie(
+            request,
+            f"pos={punchout.session_id}; Path=/; HttpOnly; Secure; SameSite=Lax")
+
+    request._cart_ctx = (punchout, holder)
+    return punchout, holder
+
+
+def _queue_cookie(request: Request, cookie: str) -> None:
+    """Stash a cookie for the dispatcher to attach to whatever the route
+    returns. Set centrally so a new route cannot forget to carry the session
+    forward — the failure mode being fixed here was exactly that."""
+    pending = getattr(request, "_pending_cookies", None)
+    if pending is None:
+        pending = []
+        request._pending_cookies = pending
+    if cookie not in pending:
+        pending.append(cookie)
 
 
 def get_session(request: Request) -> tuple[Optional[Session], dict[str, int]]:
@@ -84,12 +162,8 @@ def get_session(request: Request) -> tuple[Optional[Session], dict[str, int]]:
     the templates key their punchout chrome off exactly that. An expired or
     unknown token resolves to anonymous rather than raising: a user whose
     session timed out mid-shop should see the shop, not a stack trace."""
-    token = _token(request)
-    if token:
-        found = sessions.store().get(token)
-        if found is not None:
-            return found, found.cart
-    return None, _ANONYMOUS_CART
+    punchout, holder = _cart_context(request)
+    return punchout, (holder.cart if holder is not None else {})
 
 
 def save_session(session: Session) -> None:
@@ -104,11 +178,12 @@ def _with_session(request: Request, mutate) -> Response:
     stick on its own. Against DynamoDB it does not, and the bug looks exactly
     like the one this module was rewritten to fix. Making the write structural
     means no handler has to remember it."""
-    session, cart = get_session(request)
+    _, holder = _cart_context(request, create=True)
+    cart = holder.cart if holder is not None else {}
     response = mutate(cart)
-    if session is not None:
-        session.cart = cart
-        save_session(session)
+    if holder is not None:
+        holder.cart = cart
+        save_session(holder)
     return response
 
 
@@ -183,7 +258,8 @@ def cart_return(request: Request) -> Response:
         cart_state.clear()
         session.cart = {}
         save_session(session)
-        return html(page)
+        # Relaxed CSP: this page auto-submits itself with one inline line.
+        return html(page, headers={"content-security-policy": AUTOSUBMIT_CSP})
     common = dict(
         buyer_cookie=session.buyer_cookie,
         payload_id=f"{secrets.token_hex(8)}@punchoutsandbox.com",
@@ -210,8 +286,11 @@ def cart_return(request: Request) -> Response:
     cart_state.clear()
     session.cart = {}
     save_session(session)
+    # Relaxed CSP: the cart return auto-submits itself to the buyer with one
+    # inline line. Everything on the page is our own builder's output.
     return html(render_return_form(
-        document, browser_form_post_url=session.return_url, encoding=encoding))
+        document, browser_form_post_url=session.return_url, encoding=encoding),
+        headers={"content-security-policy": AUTOSUBMIT_CSP})
 
 
 @router.get("/validate")
@@ -274,7 +353,7 @@ def _oci_validate(callup) -> Response:
         page, _ = oci_out.render_validate_response(
             None, hook_url=callup.hook_url,
             return_target=callup.return_target, charset=callup.charset)
-        return html(page)
+        return html(page, headers={"content-security-policy": AUTOSUBMIT_CSP})
 
     try:
         quantity = int(float(callup.quantity)) if callup.quantity else 1
@@ -286,7 +365,7 @@ def _oci_validate(callup) -> Response:
     page, _ = oci_out.render_validate_response(
         item, hook_url=callup.hook_url,
         return_target=callup.return_target, charset=callup.charset)
-    return html(page)
+    return html(page, headers={"content-security-policy": AUTOSUBMIT_CSP})
 
 
 def _authenticate_machine(request: Request):
@@ -338,7 +417,7 @@ def _oci_background_search(callup) -> Response:
         page, _ = oci_out.render_search_response(
             [], search_string="", hook_url=callup.hook_url,
             return_target=callup.return_target, charset=callup.charset)
-        return html(page)
+        return html(page, headers={"content-security-policy": AUTOSUBMIT_CSP})
 
     matches = search(term)
     shown = matches[:oci_out.MAX_SEARCH_RESULTS]
@@ -348,7 +427,7 @@ def _oci_background_search(callup) -> Response:
         items, search_string=term, hook_url=callup.hook_url,
         return_target=callup.return_target, charset=callup.charset,
         total_matches=len(matches))
-    return html(page)
+    return html(page, headers={"content-security-policy": AUTOSUBMIT_CSP})
 
 
 @router.get("/oci/setup")
@@ -404,7 +483,7 @@ def oci_setup(request: Request) -> Response:
     return Response(
         status=303, body="",
         headers={"location": f"/shop?session={session.session_id}"},
-        cookies=[f"pos={session.session_id}; Path=/; HttpOnly; SameSite=Lax"],
+        cookies=[f"pos={session.session_id}; Path=/; HttpOnly; Secure; SameSite=Lax"],
     )
 
 
@@ -648,7 +727,7 @@ def console(request: Request) -> Response:
         # navigation within the storefront. The CART RETURN is a cross-site
         # POST and must not depend on it — Chrome 80's SameSite default is a
         # documented cause of punchout carts silently failing to return.
-        cookies=[f"pos={session.session_id}; Path=/; HttpOnly; SameSite=Lax"],
+        cookies=[f"pos={session.session_id}; Path=/; HttpOnly; Secure; SameSite=Lax"],
     )
 
 
@@ -758,7 +837,15 @@ def handler(event: dict, context=None) -> dict:
         return Response(status=404, body="Not found",
                         content_type="text/plain").to_lambda()
 
-    return route(request).to_lambda()
+    response = route(request)
+    # Cookies queued by _cart_context are attached here rather than by each
+    # route, so a route added later carries the punchout session forward
+    # without its author having to know that it must.
+    pending = getattr(request, "_pending_cookies", None)
+    if pending:
+        response.cookies = list(response.cookies) + [
+            c for c in pending if c not in response.cookies]
+    return response.to_lambda()
 
 
 if __name__ == "__main__":  # pragma: no cover - local dev only

@@ -230,3 +230,53 @@ tells suppliers to retry a transport failure hourly for ten hours. Right for
 production, wrong for a sandbox: the user is trying to *see* the failure, and
 automatic retries would also make any delivery endpoint a modest amplifier —
 one submission, ten outbound requests.
+
+---
+
+## 12. QA — what a full pass covers, and what it found
+
+`tests/qa_live.py` drives a **deployed** instance end to end: signup, punchout,
+storefront, cart return, OCI, purchase order, confirmation, ship notice,
+invoice, delivery — then attacks it. 147 checks.
+
+```bash
+ORIGIN_URL=https://<fn>.lambda-url.eu-west-2.on.aws .venv/bin/python tests/qa_live.py
+```
+
+It exists because every bug that has actually reached production here slipped
+through the gap the unit suites cannot cover: they run against in-process
+stores and an in-process handler, so nothing that is wrong only *when
+deployed* can fail them.
+
+The first full pass found six defects. Three were serious:
+
+| Severity | Defect | Fix |
+|---|---|---|
+| **High** | The Lambda Function URL was reachable directly, bypassing Cloudflare and every rate limit. `EDGE_SHARED_SECRET` was applied post-deploy by the Worker script while the CDK stack's `environment` dict omitted it — so **every `cdk deploy` silently deleted it** | Both paths now read one value from `infra/.env`; a deploy restores it, and a missing value stops the deploy |
+| **High** | Anonymous carts lived in a module-level dict, shared by every request a warm Lambda container handled — **two strangers browsing at once saw each other's carts** | Per-browser cart holder in DynamoDB, cookie-keyed; a read still writes nothing |
+| **High** | A punchout session survived exactly one page view. The StartPage URL carries `?session=`; no storefront link does, so the banner vanished on the first click and the cart return answered 409 — the core flow, broken for real browsers and invisible to `/console`, which sets the cookie itself | The session cookie is issued on first sight, centrally in the dispatcher |
+| Medium | Cloudflare's Browser Integrity Check answered **403** to `Python-urllib/*`, `libwww-perl/*` and UA-less clients — i.e. to buyer systems, which got a Cloudflare HTML page instead of a cXML `Status` | Configuration Rule disables BIC on the three machine endpoints only |
+| Medium | The site served content over plain `http`, and session cookies lacked `Secure` — while the comment beside one claimed it had it | Always Use HTTPS, HSTS, `Secure` on all three cookies |
+| Low | No `Content-Security-Policy`, `X-Content-Type-Options` or `Referrer-Policy` | Added centrally in `Response.to_lambda` |
+
+Every one of the three high-severity defects is now pinned by a test that
+fails if it returns.
+
+### What passed first time
+
+Hostile XML (XXE against `file://` and cloud metadata, entity expansion, deep
+nesting) refused on every entry point. Stored-XSS payloads in a buyer's
+`OrderRequest` escaped everywhere they are rendered. Cross-account access to
+orders and generated documents refused. SSRF blocked at the send step as well
+as in settings, including IPv6 loopback and a hostname that resolves privately.
+Path traversal, method handling, credential rejection, and the anonymous rate
+limit firing at the right place.
+
+### Deliberately not "fixed"
+
+**`X-Frame-Options` is absent.** Some buyer platforms open a punchout catalogue
+in an iframe, and a supplier that refuses to be framed does not work for them.
+A cart of invented products is not worth clickjacking.
+
+**Browser Integrity Check stays on for the browser pages**, including
+`/validate`. Scripted bulk validation is what the per-IP quota is for.

@@ -105,6 +105,7 @@ class SiteStack(Stack):
         site_url: str,
         mail_domain: str,
         contact_to: str | None,
+        edge_secret: str | None,
         **kwargs,
     ):
         super().__init__(scope, cid, **kwargs)
@@ -177,11 +178,12 @@ class SiteStack(Stack):
                 # degrades quietly rather than 500ing a contact form.
                 "MAIL_FROM": f"contact@{mail_domain}",
                 **({"CONTACT_TO": contact_to} if contact_to else {}),
-                # EDGE_SHARED_SECRET is deliberately ABSENT here — set it
-                # post-deploy. app/http.py treats "unset" as "edge enforcement
-                # off", which is what you want on a fresh stack that has no
-                # Cloudflare rule in front of it yet, and a footgun if you
-                # forget the second step. The deploy script prints the reminder.
+                # Set HERE, from the same environment variable the Worker
+                # deploy reads. It used to be applied post-deploy by
+                # scripts/deploy_edge_worker.py and omitted from this dict —
+                # which meant every `cdk deploy` silently deleted it and left
+                # the origin reachable directly. See infra/app.py.
+                **({"EDGE_SHARED_SECRET": edge_secret} if edge_secret else {}),
             },
         )
 

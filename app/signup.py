@@ -94,10 +94,13 @@ def view_signup(request: Request) -> Response:
         status=200,
         body=render("welcome.html", nav="signup", tenant=tenant,
                     returning=False),
-        # A year, matching the account TTL. Not HttpOnly-exempt and not
-        # Secure-exempt: this rides the same Cloudflare TLS as everything else.
-        cookies=[f"pst={tenant.tenant_id}; Path=/; HttpOnly; SameSite=Lax; "
-                 f"Max-Age={365 * 24 * 3600}"],
+        # A year, matching the account TTL. Secure as well as HttpOnly:
+        # the comment here used to claim Secure while the string omitted it,
+        # which QA caught. It rides the same Cloudflare TLS as everything
+        # else, and the site now redirects http to https — but a cookie
+        # without Secure is still one a downgrade attempt can collect.
+        cookies=[f"pst={tenant.tenant_id}; Path=/; HttpOnly; Secure; "
+                 f"SameSite=Lax; Max-Age={365 * 24 * 3600}"],
     )
 
 
