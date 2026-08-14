@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from decimal import Decimal as D
 from typing import Optional
 
-from . import inspector, sessions, setup_request, storefront
+from . import inspector, sessions, setup_request, signup, storefront, tenants
 from .catalogue.data import BY_SKU, search
 from .catalogue.taxonomy import normalise_uom
 from .cxml.punchout import (CartItem, build_cancel, build_empty_cart,
@@ -286,6 +286,36 @@ def _oci_validate(callup) -> Response:
     return html(page)
 
 
+def _authenticate_machine(request: Request):
+    """Authenticate a buyer system by its issued credentials.
+
+    cXML carries them in the header Credential blocks; OCI carries them as
+    plain USERNAME/PASSWORD parameters. Both are checked against the identity
+    the account was issued, and the secret is compared in constant time.
+
+    Returns the Tenant or None. Note this parses the body WITHOUT the hardened
+    XML front door for cXML — deliberately, it uses xml_safe.parse via
+    setup_request, which is the only thing that touches untrusted XML."""
+    if request.path == "/oci/setup":
+        params = {**request.query}
+        if request.method == "POST":
+            params.update(request.form())
+        lower = {k.lower(): v for k, v in params.items()}
+        identity = lower.get("username", "")
+        secret = lower.get("password", "")
+    else:
+        identity, secret = setup_request.extract_credentials(request.body)
+
+    if not identity:
+        return None
+    tenant = tenants.store().by_sandbox_id(identity.strip())
+    if tenant is None:
+        return None
+    if not tenants.verify_secret(secret, tenant.shared_secret):
+        return None
+    return tenant
+
+
 def _oci_background_search(callup) -> Response:
     """Answer FUNCTION=BACKGROUND_SEARCH — SRM scraping us for a merged list.
 
@@ -383,6 +413,12 @@ def punchout_setup(request: Request) -> Response:
         request, site_url=os.environ.get("SITE_URL", "https://punchoutsandbox.com"))
 
 
+@router.get("/signup")
+@router.post("/signup")
+def signup_route(request: Request) -> Response:
+    return signup.view_signup(request)
+
+
 @router.get("/docs")
 def docs(request: Request) -> Response:
     session, cart = get_session(request)
@@ -437,6 +473,37 @@ def handler(event: dict, context=None) -> dict:
     refusal = require_edge(request)
     if refusal is not None:
         return refusal.to_lambda()
+
+    # THE GATE. Applied here rather than per-route on purpose: a new route
+    # added later is gated by default, and forgetting to gate it is not
+    # possible. Opting a path OUT is a deliberate edit to signup.OPEN_PATHS.
+    if not signup.is_open(request.path):
+        tenant = signup.current_tenant(request)
+        if tenant is None:
+            # The machine endpoints authenticate with issued credentials
+            # instead of a cookie — a buyer system cannot fill in a form.
+            if request.path in ("/punchout/setup", "/oci/setup"):
+                tenant = _authenticate_machine(request)
+            if tenant is None:
+                if request.path == "/punchout/setup":
+                    return setup_request.unauthorised_response().to_lambda()
+                if request.path == "/oci/setup":
+                    return html(
+                        "<h1>Credentials required</h1><p>Send your sandbox "
+                        "identity and secret as OCI <code>USERNAME</code> and "
+                        "<code>PASSWORD</code>. Get them free at "
+                        '<a href="/signup">/signup</a>.</p>',
+                        status=401).to_lambda()
+                return signup.gate_response(request).to_lambda()
+
+        allowed, _ = tenant.check_quota(today=signup.today())
+        tenants.store().put(tenant)
+        if not allowed:
+            return html(
+                "<h1>Daily limit reached</h1><p>This account has used its "
+                f"{tenants.DAILY_QUOTA} operations for today. It resets at "
+                "midnight UTC. If you are hitting this legitimately, say so — "
+                "it is a number, not a policy.</p>", status=429).to_lambda()
 
     try:
         route = router.resolve(request)

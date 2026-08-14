@@ -7,7 +7,8 @@
   A hosted virtual supplier speaking <strong>cXML</strong> and
   <strong>OCI</strong>. Point your buyer-side punchout client at it, shop,
   and get a real cart back &mdash; cXML validated against the actual DTDs on
-  the way through. Free, no signup, nothing stored beyond an hour.
+  the way through. Free &mdash; <a href="/signup">one email gets you
+  credentials</a>, and nothing you send is stored beyond an hour.
 </p>
 
 <div class="card">
@@ -25,11 +26,13 @@
       <tr><th>Method</th><td class="mono">POST</td></tr>
       <tr><th>Content-Type</th><td class="mono">text/xml</td></tr>
       <tr><th>Credentials</th>
-          <td>Send whatever you like &mdash; any <code>From</code>,
-              <code>To</code>, <code>Sender</code> and
-              <code>SharedSecret</code> are accepted. They are
-              <strong>recorded and echoed back</strong> in the response
-              <code>Status</code> so you can see exactly what arrived.</td></tr>
+          <td>Put the identity from <a href="/signup">/signup</a> in
+              <code>To/Credential/Identity</code> and your secret in
+              <code>Sender/Credential/SharedSecret</code>. Exchanging a shared
+              secret out of band is how real punchout works, so this is
+              faithful rather than fussy. Whatever arrives is
+              <strong>echoed back</strong> in the response <code>Status</code>,
+              so you can see exactly which field it landed in.</td></tr>
       <tr><th>Required</th>
           <td>Only <code>BrowserFormPost/URL</code>. Without it there is
               nowhere to return the cart, so that one is refused up front
@@ -116,10 +119,10 @@
   &lt;From&gt;&lt;Credential domain="NetworkID"&gt;
     &lt;Identity&gt;my-company&lt;/Identity&gt;&lt;/Credential&gt;&lt;/From&gt;
   &lt;To&gt;&lt;Credential domain="NetworkID"&gt;
-    &lt;Identity&gt;meridian&lt;/Identity&gt;&lt;/Credential&gt;&lt;/To&gt;
+    &lt;Identity&gt;YOUR-IDENTITY&lt;/Identity&gt;&lt;/Credential&gt;&lt;/To&gt;
   &lt;Sender&gt;&lt;Credential domain="NetworkID"&gt;
     &lt;Identity&gt;my-company&lt;/Identity&gt;
-    &lt;SharedSecret&gt;anything&lt;/SharedSecret&gt;&lt;/Credential&gt;
+    &lt;SharedSecret&gt;YOUR-SECRET&lt;/SharedSecret&gt;&lt;/Credential&gt;
    &lt;UserAgent&gt;curl&lt;/UserAgent&gt;&lt;/Sender&gt;
  &lt;/Header&gt;
  &lt;Request deploymentMode="test"&gt;
@@ -190,9 +193,12 @@ XML</code></pre>
       <tr><th>Required</th>
           <td><code>HOOK_URL</code> &mdash; the return address. OCI has no
               other session mechanism, so this <em>is</em> the session.</td></tr>
+      <tr><th>Credentials</th>
+          <td><code>USERNAME</code> = your identity, <code>PASSWORD</code> =
+              your secret, both from <a href="/signup">/signup</a>.</td></tr>
       <tr><th>Optional</th>
           <td><code>OCI_VERSION</code>, <code>returntarget</code>,
-              <code>http_content_charset</code>, <code>USERNAME</code></td></tr>
+              <code>http_content_charset</code></td></tr>
       <tr><th>Method</th><td>GET or POST &mdash; both work</td></tr>
     </table>
   </div>
@@ -328,6 +334,9 @@ XML</code></pre>
   <div class="table-wrap">
     <table>
       <tr><th>Sessions</th><td>Expire after 1 hour. Nothing is kept.</td></tr>
+      <tr><th>Daily limit</th><td>500 validations or punchout sessions per
+          account. If you hit that legitimately, say so &mdash; it is a
+          number, not a policy.</td></tr>
       <tr><th>Credentials</th><td>Not enforced. Anything is accepted and echoed back.</td></tr>
       <tr><th>OCI functions</th>
           <td><code>DETAIL</code>, <code>VALIDATE</code> and

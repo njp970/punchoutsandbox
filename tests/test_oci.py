@@ -13,8 +13,9 @@ from urllib.parse import quote
 
 sys.path.insert(0, "/Users/neilparkes/punchout")
 
-from app import sessions
+from app import sessions, tenants
 from app.handler import handler
+from app.tenants import MemoryTenants, Tenant
 from app.oci.inbound import parse_callup, observations
 from app.oci.outbound import (FIELD_LIMITS, OciItem, build_fields,
                               render_return_form)
@@ -31,10 +32,29 @@ def check(name, condition, detail=""):
         failures.append(name)
 
 
+# The signup gate issues the credentials the OCI endpoint authenticates with,
+# so the suite needs a real account rather than a stub. USERNAME/PASSWORD are
+# injected into every /oci/setup call below for the same reason the cookie is:
+# the gate is not what this file is testing.
+_ACCOUNT = Tenant(tenant_id="test-account", email="tests@example.com")
+
+
+def _account():
+    store = MemoryTenants()
+    store.put(_ACCOUNT)
+    tenants.reset_store(store)
+
+
+_account()
+
+
 def request(path, method="GET", body=b"", query=None, cookies=None):
+    if path == "/oci/setup":
+        query = {**(query or {}), "USERNAME": _ACCOUNT.sandbox_id,
+                 "PASSWORD": _ACCOUNT.shared_secret}
     ev = {"requestContext": {"http": {"method": method, "path": path}},
           "queryStringParameters": query or {}, "headers": {},
-          "cookies": cookies or [],
+          "cookies": list(cookies or []) + [f"pst={_ACCOUNT.tenant_id}"],
           "body": base64.b64encode(body).decode(), "isBase64Encoded": True}
     r = handler(ev)
     b = r["body"]
@@ -133,6 +153,7 @@ check("flags the ISO-8859-1 default", "ISO-8859-1" in notes)
 
 print("\n=== 11. End to end through the handler ===")
 sessions.reset_store(MemoryStore())
+_account()
 st, body, raw = request("/oci/setup", "GET",
                         query={"HOOK_URL": "https://srm.example.com/hook?sid=9",
                                "OCI_VERSION": "4.0", "USERNAME": "neil"})
@@ -155,6 +176,7 @@ sessions.reset_store(None)
 # ============================================================================
 print("\n=== 12. VALIDATE: the three spec rules ===")
 sessions.reset_store(MemoryStore())
+_account()
 
 st, page, _ = request("/oci/setup", "GET", query={
     "HOOK_URL": "https://srm.example.com/hook?sid=7",

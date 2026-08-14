@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Get access — PunchOut Sandbox{% endblock %}
+{% block content %}
+
+<div style="max-width:52ch">
+  <h1>Get access</h1>
+  <p class="muted" style="margin-top:-4px">
+    Free, and staying free. No password, no card, no confirmation email &mdash;
+    you get your credentials on the next screen.
+  </p>
+
+  {% if error %}
+  <div class="verdict-lg verdict-fail" style="margin:16px 0">
+    <div class="glyph" aria-hidden="true">&#10005;</div>
+    <div><div class="headline">{{ error }}</div></div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <form method="post" action="/signup">
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" value="{{ email }}"
+               required autofocus placeholder="you@company.com">
+      </div>
+      <div class="field">
+        <label for="company">Company <span class="faint">(optional)</span></label>
+        <input type="text" id="company" name="company" value="{{ company }}"
+               placeholder="Acme Procurement">
+      </div>
+      <button class="btn" type="submit" style="width:100%;justify-content:center">
+        Get my credentials
+      </button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">What we store, exactly</h2></div>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Your email</th>
+            <td>So we can tell how many people use this, and get in touch if
+                something you rely on changes. Kept for a year.</td></tr>
+        <tr><th>Company, if given</th><td>Optional, and only for the same reason.</td></tr>
+        <tr><th>A usage counter</th><td>To stop one account burning the compute.</td></tr>
+      </table>
+    </div>
+    <p class="card-note" style="margin:12px 0 0">
+      No password &mdash; there is nothing here to protect. Every account sees
+      the same catalogue of invented companies. Nothing you validate or
+      generate is stored beyond an hour, and none of it is looked at.
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">Why there is a gate on a free tool</h2></div>
+    <p class="card-note" style="margin:0">
+      Two honest reasons. Validating a document against a 400KB DTD costs real
+      CPU, and an open endpoint doing that is a free cycle generator &mdash;
+      an account makes rate limiting possible at all. And knowing who finds
+      this useful is the entire reason it is worth hosting.
+    </p>
+  </div>
+</div>
+
+{% endblock %}

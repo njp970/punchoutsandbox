@@ -23,17 +23,26 @@ documents `xml_safe` refuses outright — hostile or unparseable — are turned
 away, and then with a cXML `Status` rather than a bare HTTP error.
 
 =============================================================================
-CREDENTIALS ARE RECORDED, NOT ENFORCED
+CREDENTIALS ARE NOW ENFORCED — AND THIS REVERSED AN EARLIER DECISION
 =============================================================================
-A real supplier checks the shared secret. This sandbox cannot: it has no
-prior relationship with anyone, and demanding credentials it never issued
-would make it unusable by the people it is for.
+This endpoint originally accepted any credentials and merely reported what it
+saw, on the argument that a sandbox has no prior relationship with anyone.
+The signup gate changed that: an account is issued an identity and a shared
+secret, and `handler._authenticate_machine` requires them here.
 
-What it does instead is **report exactly what it saw** — the From, To and
-Sender identities, their domains, and whether a SharedSecret was present.
-That is more useful than an authentication failure, because "my credentials
-are not arriving in the field I think they are" is itself one of the common
-integration bugs, and no other tool will show you.
+The earlier argument was not wrong so much as incomplete. Demanding
+credentials nobody had been issued would indeed have been useless — but
+ISSUING them first, free and instantly, removes the objection entirely. And
+exchanging a shared secret out of band before anything connects is exactly
+how real punchout works, so requiring it makes the sandbox more faithful
+rather than less.
+
+What survives from the original design is the reporting. A request that
+authenticates still gets back **exactly what we saw** in the `Status` text —
+which identity arrived, in which element, and whether a SharedSecret was
+present at all. "My credentials are not arriving in the field I think they
+are" is itself one of the common integration bugs, and no other tool shows
+you.
 
 The one thing worth flagging back is a secret sent in a document that will
 later travel through a browser (see `cxml/punchout.py` on one-way transport).
@@ -160,3 +169,50 @@ def handle_setup(request: Request, *, site_url: str) -> Response:
         "</Response></cXML>"
     )
     return Response(status=200, body=body, content_type="text/xml; charset=utf-8")
+
+
+def extract_credentials(raw: bytes) -> tuple[str, str]:
+    """Pull the identity and shared secret out of a PunchOutSetupRequest.
+
+    Used by the signup gate BEFORE the document is otherwise processed, so it
+    goes through the same hardened parser as everything else — there is no
+    "quick peek at the XML" path, because a quick peek at hostile XML is
+    exactly what `xml_safe` exists to prevent.
+
+    Returns `("", "")` on anything unparseable rather than raising: the caller
+    is deciding whether to authenticate, and an unparseable body is simply not
+    authenticated. The parse failure is reported properly later, by
+    `handle_setup`, which is where a user-facing explanation belongs.
+
+    Identity is looked for in `To` first, then `From`. `To` is the supplier —
+    us — which is where a buyer configures the identity we issued them. Some
+    buyer systems put it in `From` instead, so both are accepted."""
+    try:
+        doc = parse(raw)
+    except XmlRejected:
+        return "", ""
+    tree = doc.tree
+    identity = ""
+    for path in (".//To/Credential/Identity", ".//From/Credential/Identity",
+                 ".//Sender/Credential/Identity"):
+        found = _text(tree, path)
+        if found:
+            identity = found
+            break
+    secret = _text(tree, ".//Sender/Credential/SharedSecret") or ""
+    return identity, secret
+
+
+def unauthorised_response() -> Response:
+    """cXML 401 for an unrecognised credential.
+
+    HTTP 200 carrying a cXML `Status`, per the spec: any HTTP reply without
+    valid cXML content is a TRANSPORT error that clients retry ten times
+    hourly. A 401 at the HTTP layer would turn "your credentials are wrong"
+    into an all-day retry storm."""
+    return _status_response(
+        401, "Unauthorized",
+        "Credentials not recognised. This sandbox issues a free identity and "
+        "shared secret at https://punchoutsandbox.com/signup — put the "
+        "identity in To/Credential/Identity and the secret in "
+        "Sender/Credential/SharedSecret.")

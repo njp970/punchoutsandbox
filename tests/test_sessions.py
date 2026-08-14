@@ -17,8 +17,9 @@ import time
 
 sys.path.insert(0, "/Users/neilparkes/punchout")
 
-from app import sessions
+from app import sessions, tenants
 from app.handler import handler
+from app.tenants import MemoryTenants, Tenant
 from app.sessions import DEFAULT_TTL_SECONDS, MemoryStore, Session
 
 failures: list[str] = []
@@ -48,11 +49,24 @@ class CopyingStore(MemoryStore):
         super().put(copy.deepcopy(session))
 
 
+# The signup gate means every gated route needs an account. Established once
+# here rather than per-test: the gate is not what this file is testing, and a
+# missing cookie would fail these assertions for entirely the wrong reason.
+_ACCOUNT = "test-account"
+
+
+def _account():
+    store = MemoryTenants()
+    store.put(Tenant(tenant_id=_ACCOUNT, email="tests@example.com"))
+    tenants.reset_store(store)
+
+
 def request(path, method="GET", body=b"", cookies=None):
     event = {
         "requestContext": {"http": {"method": method, "path": path}},
         "queryStringParameters": {}, "headers": {},
-        "cookies": cookies or [],
+        # The account cookie rides alongside whatever the test supplies.
+        "cookies": list(cookies or []) + [f"pst={_ACCOUNT}"],
         "body": base64.b64encode(body).decode(), "isBase64Encoded": True,
     }
     return handler(event)
@@ -61,6 +75,7 @@ def request(path, method="GET", body=b"", cookies=None):
 print("\n=== 1. Expiry is enforced on read, not left to TTL ===")
 store = CopyingStore()
 sessions.reset_store(store)
+_account()
 stale = Session(session_id="old", buyer_cookie="c", return_url="https://b/r")
 stale.expires_at = time.time() - 1          # past, but the row still exists
 store.put(stale)
@@ -77,6 +92,7 @@ check("default TTL is an hour",
 print("\n=== 2. Cart mutations survive a copying store ===")
 store = CopyingStore()
 sessions.reset_store(store)
+_account()
 store.put(Session(session_id="s1", buyer_name="Northgate",
                   buyer_cookie="COOKIE", return_url="https://buyer.example/r"))
 
@@ -114,6 +130,7 @@ check("the clear was actually written", store.writes > before,
 print("\n=== 5. Anonymous browsing needs no session write ===")
 store = CopyingStore()
 sessions.reset_store(store)
+_account()
 request("/cart/add", "POST", b"sku=MSC-1001&quantity=1")
 check("no session row created for anonymous browsing", store.writes == 0,
       f"{store.writes} writes — anonymous carts have nowhere to return to, "
@@ -128,6 +145,7 @@ check("but returning a cart without a session is refused",
       result["statusCode"] == 409)
 
 sessions.reset_store(None)
+tenants.reset_store(None)
 
 print("\n" + "=" * 62)
 if failures:

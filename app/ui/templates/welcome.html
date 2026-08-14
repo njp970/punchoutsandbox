@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Your credentials — PunchOut Sandbox{% endblock %}
+{% block content %}
+
+<div style="max-width:60ch">
+  {% if returning %}
+  <h1>Your credentials</h1>
+  <p class="muted" style="margin-top:-4px">
+    You already have an account. These are the same credentials as before
+    &mdash; re-issuing them would break whatever you have already configured.
+  </p>
+  {% else %}
+  <div class="verdict-lg verdict-pass" style="margin-bottom:18px">
+    <div class="glyph" aria-hidden="true">&#10003;</div>
+    <div>
+      <div class="headline">You're in</div>
+      <div class="detail">Signed up as {{ tenant.email }}. Nothing else to do.</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">Your punchout credentials</h2></div>
+    <p class="card-note">
+      Put these in your buyer system exactly as a real supplier's credentials
+      would go. Bookmark this page &mdash; <a href="/signup">/signup</a> shows
+      them again whenever you need.
+    </p>
+
+    <label style="margin-top:8px">Identity <span class="faint">(From / To Identity, or OCI USERNAME)</span></label>
+    <div class="copyfield">
+      <code>{{ tenant.sandbox_id }}</code>
+      <button type="button" onclick="navigator.clipboard.writeText('{{ tenant.sandbox_id }}')">Copy</button>
+    </div>
+
+    <label style="margin-top:14px">Shared secret <span class="faint">(SharedSecret, or OCI PASSWORD)</span></label>
+    <div class="copyfield">
+      <code>{{ tenant.shared_secret }}</code>
+      <button type="button" onclick="navigator.clipboard.writeText('{{ tenant.shared_secret }}')">Copy</button>
+    </div>
+
+    <p class="card-note" style="margin-top:14px">
+      Exchanging a shared secret out of band is how punchout actually works
+      &mdash; a real supplier gives you exactly this before anything connects.
+      The sandbox is not being precious; it is being faithful.
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">Start here</h2></div>
+    <div class="btn-row">
+      <a class="btn" href="/shop">Browse the catalogue</a>
+      <a class="btn btn-secondary" href="/validate">Validate a document</a>
+      <a class="btn btn-secondary" href="/docs">Read the docs</a>
+    </div>
+    <p class="card-note" style="margin:14px 0 0">
+      Your cXML endpoint is <code>/punchout/setup</code> and your OCI endpoint
+      is <code>/oci/setup</code>. Both need the credentials above; the
+      <a href="/docs">docs</a> show exactly where they go.
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">Limits</h2></div>
+    <div class="table-wrap">
+      <table>
+        <tr><th>Daily</th><td>500 validations or punchout sessions. If you hit
+            that legitimately, say so &mdash; it is a number, not a policy.</td></tr>
+        <tr><th>Sessions</th><td>Expire after an hour.</td></tr>
+        <tr><th>Account</th><td>Kept for a year, then deleted.</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
