@@ -12,22 +12,52 @@
     and cannot drift out of date the way a pasted example does.
   </p>
 
-  {% for key, name, blurb in samples %}
+  {% for s in canonical_samples %}
   <div class="card">
-    <div class="card-header"><h2 class="card-title">{{ name }}</h2></div>
-    <p class="card-note" style="margin:0 0 12px">{{ blurb }}</p>
-    <div class="btn-row">
-      <a class="btn btn-sm" href="/samples/{{ key }}">View the XML</a>
-      <a class="btn btn-sm btn-secondary" href="/validate">Validate your own</a>
+    <div class="card-header"><h2 class="card-title">{{ s.name }}</h2></div>
+    <p class="card-note" style="margin:0 0 12px">{{ s.blurb }}</p>
+    <div class="copyfield">curl {{ site_url }}/samples/{{ s.key }}</div>
+    <div class="btn-row mt">
+      <a class="btn btn-sm" href="/samples/{{ s.key }}">View the XML</a>
     </div>
-    <div class="copyfield mt">curl {{ site_url }}/samples/{{ key }}</div>
+  </div>
+  {% endfor %}
+
+  <h2 style="margin-top:34px">Documents designed to break your parser</h2>
+  <p class="muted" style="margin-top:-4px">
+    Every sample above agrees with itself &mdash; the ship notice despatches
+    exactly what was ordered, in the same unit, at the same price. So an
+    extractor that ignores <code>UnitOfMeasure</code> entirely passes all of
+    them.
+  </p>
+  <p class="muted">
+    These do not. Each is <strong>conformant cXML that a real supplier really
+    sends</strong>, disagreeing with the order in exactly one way. The point is
+    not malformed input &mdash; <a href="/validate">the validator</a> already
+    covers that &mdash; but well-formed input carrying a fact your code may be
+    assuming away.
+  </p>
+
+  {% for s in adversarial_samples %}
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">{{ s.name }}</h2></div>
+    <p class="card-note" style="margin:0 0 10px">{{ s.blurb }}</p>
+    <div class="finding finding-advisory">
+      <div class="finding-top"><span class="finding-code">what it breaks</span></div>
+      <div class="finding-msg">{{ s.breaks }}</div>
+    </div>
+    <div class="copyfield mt">curl {{ site_url }}/samples/{{ s.key }}</div>
+    <div class="btn-row mt">
+      <a class="btn btn-sm" href="/samples/{{ s.key }}">View the XML</a>
+    </div>
   </div>
   {% endfor %}
 
   <div class="card">
     <div class="card-header"><h2 class="card-title">Why these are generated rather than written</h2></div>
     <p class="card-note" style="margin:0">
-      A sample typed into a page is correct on the day it is typed and silently
+      Both sets are generated, not written. A sample typed into a page is
+    correct on the day it is typed and silently
       wrong after the next change to the code that produces the real document.
       A wrong example in the documentation of a conformance tool is worse than
       no example at all, because people trust it. These come from the builders

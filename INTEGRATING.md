@@ -89,7 +89,27 @@ against the real DTD.
 **Read the ship notice before writing an extractor.** `ItemID` is *optional*
 there and `UnitOfMeasure` is *not* — the reverse of every other item block in
 cXML, and the usual reason a parser written from the other documents fails on
-that one.
+that one. `ShipControl` is also a *sibling* of `ShipNoticePortion` rather than
+inside it, because one shipment can cover several orders.
+
+### Then the ones designed to break your parser
+
+Every sample above agrees with itself — the ship notice despatches exactly what
+was ordered, in the same unit, at the same price. An extractor that ignores
+`UnitOfMeasure` entirely passes all of them. These do not:
+
+| Sample | What it breaks |
+|---|---|
+| `shipnoticerequest-unit-change` | Ordered 1 BX, despatched 30 EA. No unit field → you read 30 and believe 30 boxes arrived. |
+| `shipnoticerequest-partial` | One of three. Marking the line complete closes an order two thirds outstanding. |
+| `confirmationrequest-price-change` | Accepted at a higher price. Assuming confirmations are acceptances means the invoice tells you. |
+| `confirmationrequest-backordered` | Confirmed, and nothing is coming for eight weeks. |
+| `invoicedetailrequest-split-line` | One PO line invoiced as two. One-to-one matching drops or double-counts. |
+| `punchoutordermessage-quirks` | Every catalogue quirk at once. Survive this and you survive real suppliers. |
+
+All are **conformant cXML that a real supplier really sends**. The point is not
+malformed input — `/api/validate` covers that — but well-formed input carrying a
+fact your code may be assuming away.
 
 ---
 

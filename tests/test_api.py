@@ -209,19 +209,58 @@ print("\n5. Every document has a worked, valid sample")
 client = fresh()
 status, page = client("/samples")
 check("/samples is open", status == 200 and "Sign up to continue" not in page)
-for key, (name, _, _) in samples.SAMPLES.items():
-    status, body = client(f"/samples/{key}")
-    check(f"{name} sample serves", status == 200 and body.startswith("<?xml"),
+for sample in samples.CANONICAL:
+    status, body = client(f"/samples/{sample.key}")
+    check(f"{sample.key} serves", status == 200 and body.startswith("<?xml"),
           f"HTTP {status}")
     report = validate(parse(body.encode()))
-    check(f"...and validates against the real DTD",
-          not report.errors and report.document_type == name,
+    check("...and validates against the real DTD",
+          not report.errors and report.document_type == sample.name,
           f"type={report.document_type} errors="
           f"{[e.message[:60] for e in report.errors]}")
 check("ShipNoticeRequest is among them",
       "shipnoticerequest" in samples.SAMPLES,
       "its shape is the least guessable in cXML — ItemID optional, "
       "UnitOfMeasure mandatory")
+
+print("\n7. Adversarial samples are VALID and DISAGREE with the order")
+# The canonical set agrees with itself, so an extractor that ignores
+# UnitOfMeasure passes every one. That gap was found by a reader, not by a
+# document — which is the wrong way round.
+for sample in samples.ADVERSARIAL:
+    status, body = client(f"/samples/{sample.key}")
+    report = validate(parse(body.encode()))
+    check(f"{sample.key} is conformant",
+          status == 200 and not report.errors,
+          f"HTTP {status} errors={[e.message[:50] for e in report.errors]} — "
+          "these must be VALID; malformed input is /validate's job")
+    check("...and says what it breaks", bool(sample.breaks),
+          "a trap with no explanation is just a broken example")
+
+unit_change = client("/samples/shipnoticerequest-unit-change")[1]
+ordered = client("/samples/punchoutordermessage")[1]
+check("the unit-change notice really does ship a different unit",
+      "<UnitOfMeasure>EA</UnitOfMeasure>" in unit_change
+      and "<UnitOfMeasure>BX</UnitOfMeasure>" in ordered,
+      "if the units matched, the sample would prove nothing")
+check("...and a different quantity with it",
+      'quantity="30"' in unit_change and 'quantity="3"' in ordered,
+      "30 EA against 3 BX — the £299.70 shape")
+
+split = client("/samples/invoicedetailrequest-split-line")[1]
+check("the split invoice references one PO line twice",
+      split.count('<InvoiceDetailItemReference lineNumber="1"') == 2,
+      "one order line, two invoice lines")
+
+quirks = client("/samples/punchoutordermessage-quirks")[1]
+from app.catalogue.data import PRODUCTS
+quirked = [p for p in PRODUCTS if p.quirks]
+check("the quirk cart carries every quirked product",
+      all(p.sku in quirks for p in quirked),
+      f"{len(quirked)} quirked products in the catalogue")
+check("...including the unnormalised units",
+      "100/BX" in quirks or "EACH" in quirks,
+      "sent as a sloppy supplier sends them, not cleaned up on the way out")
 
 print("\n" + "=" * 70)
 if failures:

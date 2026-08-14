@@ -531,7 +531,46 @@ XML</code></pre>
     extractor: <code>ItemID</code> is <em>optional</em> there and
     <code>UnitOfMeasure</code> is not &mdash; the reverse of every other item
     block in cXML, and the usual reason a parser written from the other
-    documents fails on that one.
+    documents fails on that one. <code>ShipControl</code> is also a
+    <em>sibling</em> of <code>ShipNoticePortion</code>, not inside it: one
+    shipment can cover several orders, so carrier and tracking sit at the
+    request level.
+  </p>
+  <p class="card-note">
+    <strong>And then the ones designed to break your parser.</strong> Each of
+    the samples above agrees with itself &mdash; the ship notice despatches
+    exactly what was ordered, in the same unit, at the same price &mdash; so an
+    extractor that ignores <code>UnitOfMeasure</code> entirely passes all of
+    them. These do not:
+  </p>
+  <div class="table-wrap">
+    <table>
+      <tr><th><code>shipnoticerequest-unit-change</code></th>
+          <td>Ordered 1 BX, despatched 30 EA. An extractor with no unit field
+              reads 30 and believes 30 boxes arrived.</td></tr>
+      <tr><th><code>shipnoticerequest-partial</code></th>
+          <td>One of three, <code>fulfillmentType="partial"</code>. Closes an
+              order that is two thirds outstanding.</td></tr>
+      <tr><th><code>confirmationrequest-price-change</code></th>
+          <td>Accepted at a higher price and a later date. Discovered by the
+              invoice if you assume confirmations are acceptances.</td></tr>
+      <tr><th><code>confirmationrequest-backordered</code></th>
+          <td>Confirmed, and nothing is coming for eight weeks.</td></tr>
+      <tr><th><code>invoicedetailrequest-split-line</code></th>
+          <td>One PO line invoiced as two. One-to-one matching drops a line or
+              double-counts one.</td></tr>
+      <tr><th><code>punchoutordermessage-quirks</code></th>
+          <td>Every catalogue quirk at once: free-text unit, pack size in the
+              unit, over-length description and auxiliary id, delimiters in a
+              part number, non-ASCII text, sub-penny price, punctuated
+              UNSPSC.</td></tr>
+    </table>
+  </div>
+  <p class="card-note">
+    All of them are <strong>conformant cXML that a real supplier really
+    sends</strong>. The point is not malformed input &mdash;
+    <a href="/validate">the validator</a> covers that &mdash; but well-formed
+    input carrying a fact your code may be assuming away.
   </p>
 </div>
 

@@ -232,8 +232,8 @@ def sample_index(request: Request) -> Response:
     return html(render(
         "samples.html", nav="samples", session=session, cart_count=len(cart),
         canonical="/samples",
-        samples=[(key, name, blurb)
-                 for key, (name, blurb, _) in samples.SAMPLES.items()]))
+        canonical_samples=samples.CANONICAL,
+        adversarial_samples=samples.ADVERSARIAL))
 
 
 @router.get("/samples/{kind}")
