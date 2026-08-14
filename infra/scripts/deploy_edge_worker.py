@@ -27,6 +27,9 @@ import sys
 import boto3
 import requests
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cloudflare_credentials as credentials
+
 CF_API = "https://api.cloudflare.com/client/v4"
 ZONE_NAME = "punchoutsandbox.com"
 SCRIPT_NAME = "punchout-sandbox-edge"
@@ -36,19 +39,6 @@ WORKER_JS = os.path.join(
 )
 
 
-def _auth_headers() -> tuple[dict, str]:
-    token = os.environ.get("CLOUDFLARE_API_TOKEN")
-    if token:
-        return {"Authorization": f"Bearer {token}"}, "scoped API token"
-    email, key = (os.environ.get("CLOUDFLARE_EMAIL"),
-                  os.environ.get("CLOUDFLARE_API_KEY"))
-    if email and key:
-        return ({"X-Auth-Email": email, "X-Auth-Key": key},
-                f"legacy Global API Key ({email})")
-    raise SystemExit(
-        "No Cloudflare credentials. Set CLOUDFLARE_API_TOKEN, or "
-        "CLOUDFLARE_EMAIL + CLOUDFLARE_API_KEY, from a gitignored infra/.env."
-    )
 
 
 def _cf(session, method, path, **kw) -> dict:
@@ -68,9 +58,7 @@ def main() -> int:
     ap.add_argument("--region", default="eu-west-2")
     args = ap.parse_args()
 
-    headers, mode = _auth_headers()
-    print(f"auth    : {mode}")
-
+    
     account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
 
     cfn = boto3.client("cloudformation", region_name=args.region)
@@ -96,8 +84,7 @@ def main() -> int:
             "`cdk deploy`:\n\n"
             f"    EDGE_SHARED_SECRET={suggestion}\n")
 
-    session = requests.Session()
-    session.headers.update(headers)
+    session = credentials.session()
 
     zones = _cf(session, "GET", "/zones", params={"name": ZONE_NAME})["result"]
     if not zones:

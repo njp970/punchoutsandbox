@@ -54,6 +54,9 @@ import sys
 
 import requests
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cloudflare_credentials as credentials
+
 CF_API = "https://api.cloudflare.com/client/v4"
 ZONE_NAME = "punchoutsandbox.com"
 
@@ -61,19 +64,6 @@ ZONE_NAME = "punchoutsandbox.com"
 MACHINE_PATHS = ["/punchout/setup", "/oci/setup", "/order"]
 
 
-def _auth_headers() -> tuple[dict[str, str], str]:
-    token = os.environ.get("CLOUDFLARE_API_TOKEN")
-    if token:
-        return {"Authorization": f"Bearer {token}"}, "scoped API token"
-    email = os.environ.get("CLOUDFLARE_EMAIL")
-    key = os.environ.get("CLOUDFLARE_API_KEY")
-    if email and key:
-        return ({"X-Auth-Email": email, "X-Auth-Key": key},
-                f"legacy Global API Key ({email})")
-    raise SystemExit(
-        "No Cloudflare credentials. Set CLOUDFLARE_API_TOKEN, or "
-        "CLOUDFLARE_EMAIL + CLOUDFLARE_API_KEY, from the gitignored infra/.env."
-    )
 
 
 def _cf(session, method, path, *, allow_failure=False, **kw) -> dict:
@@ -97,10 +87,7 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
-    headers, mode = _auth_headers()
-    print(f"auth    : {mode}")
-    session = requests.Session()
-    session.headers.update(headers)
+    session = credentials.session()
 
     zones = _cf(session, "GET", "/zones", params={"name": ZONE_NAME})["result"]
     if not zones:

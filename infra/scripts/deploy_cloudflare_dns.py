@@ -61,37 +61,14 @@ import sys
 import boto3
 import requests
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cloudflare_credentials as credentials
+
 CF_API = "https://api.cloudflare.com/client/v4"
 ZONE_NAME = "punchoutsandbox.com"
 
 
 
-def _auth_headers() -> tuple[dict[str, str], str]:
-    """Build Cloudflare auth headers from whichever credentials are present.
-
-    Returns `(headers, description)`. The description is printed so the
-    operator can see which mode was used — silently picking one of two
-    credentials is how you end up debugging a 403 against the wrong key."""
-    token = os.environ.get("CLOUDFLARE_API_TOKEN")
-    if token:
-        return {"Authorization": f"Bearer {token}"}, "scoped API token"
-
-    email = os.environ.get("CLOUDFLARE_EMAIL")
-    key = os.environ.get("CLOUDFLARE_API_KEY")
-    if email and key:
-        return (
-            {"X-Auth-Email": email, "X-Auth-Key": key},
-            f"legacy Global API Key ({email})",
-        )
-
-    raise SystemExit(
-        "No Cloudflare credentials found. Set EITHER:\n"
-        "  CLOUDFLARE_API_TOKEN                     (scoped token, preferred)\n"
-        "or\n"
-        "  CLOUDFLARE_EMAIL + CLOUDFLARE_API_KEY    (legacy Global API Key)\n\n"
-        "Source them from a gitignored infra/.env, as Xenia does — do not "
-        "paste them into this file."
-    )
 
 
 def _cf(session: requests.Session, method: str, path: str, **kw) -> dict:
@@ -136,17 +113,14 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    headers, auth_mode = _auth_headers()
-    print(f"auth    : {auth_mode}")
-
+    
     # The Function URL output is a full https URL with a trailing slash; the
     # DNS record needs the bare hostname.
     url = function_url_from_stack(args.stage, args.region)
     origin_host = url.replace("https://", "").replace("http://", "").rstrip("/")
     print(f"origin  : {origin_host}")
 
-    session = requests.Session()
-    session.headers.update(headers)
+    session = credentials.session()
 
     zones = _cf(session, "GET", "/zones", params={"name": ZONE_NAME})["result"]
     if not zones:

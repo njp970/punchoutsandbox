@@ -50,24 +50,13 @@ import sys
 import boto3
 import requests
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cloudflare_credentials as credentials
+
 CF_API = "https://api.cloudflare.com/client/v4"
 ZONE_NAME = "punchoutsandbox.com"
 
 
-def _auth_headers() -> tuple[dict[str, str], str]:
-    token = os.environ.get("CLOUDFLARE_API_TOKEN")
-    if token:
-        return {"Authorization": f"Bearer {token}"}, "scoped API token"
-    email = os.environ.get("CLOUDFLARE_EMAIL")
-    key = os.environ.get("CLOUDFLARE_API_KEY")
-    if email and key:
-        return ({"X-Auth-Email": email, "X-Auth-Key": key},
-                f"legacy Global API Key ({email})")
-    raise SystemExit(
-        "No Cloudflare credentials. Set CLOUDFLARE_API_TOKEN, or "
-        "CLOUDFLARE_EMAIL + CLOUDFLARE_API_KEY. Source them from the "
-        "gitignored infra/.env — do not paste them into this file."
-    )
 
 
 def _cf(session: requests.Session, method: str, path: str, **kw) -> dict:
@@ -125,9 +114,7 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
-    headers, mode = _auth_headers()
-    print(f"auth    : {mode}")
-
+    
     ses = boto3.client("sesv2", region_name=args.region)
     tokens = ensure_identity(ses, args.domain, dry_run=args.dry_run)
     if not tokens and not args.dry_run:
@@ -136,8 +123,7 @@ def main() -> int:
             "created with BYODKIM rather than Easy DKIM — check the console."
         )
 
-    session = requests.Session()
-    session.headers.update(headers)
+    session = credentials.session()
     zones = _cf(session, "GET", "/zones", params={"name": ZONE_NAME})["result"]
     if not zones:
         raise SystemExit(f"zone {ZONE_NAME} not found on this Cloudflare account.")

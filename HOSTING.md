@@ -280,3 +280,40 @@ A cart of invented products is not worth clickjacking.
 
 **Browser Integrity Check stays on for the browser pages**, including
 `/validate`. Scripted bulk validation is what the per-IP quota is for.
+
+---
+
+## 13. Cloudflare credentials
+
+`infra/scripts/cloudflare_credentials.py` is the only place that answers "how
+do I authenticate to Cloudflare". It resolves in this order:
+
+1. `CLOUDFLARE_API_TOKEN` in the environment — an explicit override, and how
+   you test a new token before storing it.
+2. **AWS Secrets Manager `xenia/dev/cloudflare/dns-token`** (eu-west-2) — the
+   normal path. Needs AWS credentials, so `AWS_PROFILE=xenia`.
+3. `CLOUDFLARE_EMAIL` + `CLOUDFLARE_API_KEY` — the legacy Global API Key,
+   deprecated and last.
+
+Every deploy script prints which one it used, because silently choosing among
+three is how you end up debugging a 403 against the wrong credential.
+
+### What this replaced, and why
+
+Each script carried its own copy of the same `_auth_headers()`, and all of
+them read from `infra/.env` — so rotating the credential meant editing a file
+on one laptop and nowhere else. The Global API Key in that file stopped working
+mid-session with `9103 Unknown X-Auth-Key`, which looks *identical* to a scoped
+token stored in the wrong variable, because the two are sent as different
+headers. The failure message now says so explicitly.
+
+The dead value can stay in `infra/.env`: Secrets Manager resolves ahead of it,
+so it is inert.
+
+### A label is not a scope
+
+That secret is described as covering `onxenia.com`. It actually reaches six
+zones including `punchoutsandbox.com` — established by asking Cloudflare, not
+by reading the description. `zone_id()` reports which zones a credential can
+actually see when a lookup fails, because "zone not found" otherwise reads as
+"the zone is missing" rather than "this token cannot see it".
