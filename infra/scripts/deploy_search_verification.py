@@ -145,7 +145,13 @@ def main() -> int:
 
     print("\nPublished. Cloudflare serves it immediately; Google usually sees it")
     print("within minutes. Confirm before pressing Verify:")
-    print(f"  dig +short TXT {args.name}")
+    print(f"  curl -s 'https://dns.google/resolve?name={args.name}&type=TXT'")
+    print()
+    print("  DoH rather than `dig`, on purpose. Some networks intercept port 53,")
+    print("  and an intercepted `dig` returns an empty answer even when you name")
+    print("  the authoritative server directly — the tell is `flags: qr rd ra`")
+    print("  with no `aa`. That looks exactly like the record not existing. This")
+    print("  both dodges the interception and asks the resolver that matters.")
     print("\nThe HTML file stays in place. Google holds both methods and needs")
     print("only one of them to keep working.")
     return 0
