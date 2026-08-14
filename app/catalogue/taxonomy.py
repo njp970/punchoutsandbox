@@ -49,6 +49,7 @@ deliberate and is the behaviour a real supplier has to have.
 from __future__ import annotations
 
 import re
+from typing import Optional
 
 # The canonical domain string we always emit.
 UNSPSC_DOMAIN = "UNSPSC"
@@ -335,58 +336,146 @@ UNSPSC: dict[str, str] = {
 # Units of measure
 # =========================================================================== #
 # cXML requires UN/CEFACT Recommendation 20 codes. Reality does not comply,
-# and the sandbox has to model reality — see docs/reference/platform-conformance.md.
+# and the sandbox has to model reality.
 #
-# The honest position on this table: the Rec 20 codes below are NOT verified
-# against the UNECE annexes in this build. `EA` in particular is what
-# essentially every real punchout supplier sends and every buyer accepts,
-# while `C62` is the formally correct dimensionless code that almost never
-# appears in a cart. We emit `EA` by default because the goal is to behave
-# like a real supplier, and we flag the discrepancy in the UI rather than
-# quietly picking a side.
+# Verified against the official UNECE `rec20_Rev17e-2021.xlsx` (Rev 17, 2021 —
+# current; there is no Rev 18) and `rec21_Rev12e_Annex-V-VI_2021.xls`. Three
+# findings reshape this table:
+#
+# 1. **`PCE`, `DZ` and `ROL` are not Rec 20 codes at all**, in Rev 16 or 17.
+#    `PCE` is nonetheless everywhere, because SAP ships internal unit `ST`
+#    (Stück) with ISO code `PCE` — so SAP's own ISO mapping emits a
+#    non-conformant value.
+# 2. **Every packaging code was DELETED from Rec 20 and moved to Rec 21**,
+#    where it takes an `X` prefix: `BX`→`XBX`, `CT`→`XCT`, `CS`→`XCS`,
+#    `PK`→`XPK`, `BG`→`XBG`, `RO`→`XRO`. Emitting the bare two-letter form is
+#    the single most common catalogue nonconformity, and nothing rejects it.
+# 3. **Every count unit procurement actually uses is INFORMATIVE only.**
+#    `EA`, `H87`, `DZN`, `SET`, `PR`, `NAR`, `RM` are all level 3, absent from
+#    the normative Annex I. `C62` ("one") is the sole normative count unit.
+#    So "use the normative list" is not advice anyone can follow.
 CANONICAL_UOM = "EA"
 
-# Input aliases we accept and normalise. Deliberately generous: a sandbox that
-# rejected `EACH` would be stricter than every system its users integrate with.
+# THE TRAP THAT MUST NOT BE AUTOMATED AWAY.
+#
+# SAP internal `ST` = Stück = each. **Rec 20 `ST` = SHEET.** An SAP shop
+# leaking its internal code instead of the mapped ISO code sends "sheet" to a
+# conformant reader that believes it, and no validator anywhere catches it
+# because both sides think `ST` is a known code.
+#
+# So `ST` is NOT in the alias table. Resolving it silently — in either
+# direction — would make this sandbox commit the exact class of error it
+# exists to detect. It is reported as ambiguous and the user decides.
+#
+# `PF` is the same shape of trap going the other way: Rec 20 `PF` was
+# "pallet (lift)", but Rec 21 `PF` is **"Pen"** (an animal enclosure), so the
+# mechanical `X`-prefix migration that is correct for every other packaging
+# code silently turns pallets into livestock pens. Also excluded.
+AMBIGUOUS_UOM: dict[str, str] = {
+    "ST": (
+        "Rec 20 'ST' means SHEET. SAP uses 'ST' internally for Stück (each) — "
+        "if this came from an SAP system it probably means EACH, and a "
+        "conformant reader will take it as SHEET. Map it explicitly; do not "
+        "let anything guess."
+    ),
+    "PF": (
+        "Rec 20 'PF' was 'pallet (lift)' and is deleted. Rec 21 'PF' is 'Pen' "
+        "(an animal enclosure), so the mechanical PF->XPF migration that is "
+        "correct for every other packaging code turns pallets into livestock "
+        "pens. The pallet code is Rec 21 'PX', i.e. 'XPX'."
+    ),
+}
+
+# Input aliases, mapped to the code we would EMIT. Deliberately generous on
+# input: a sandbox stricter than the systems its users integrate with would be
+# useless. Packaging aliases resolve to the conformant X-prefixed Rec 21 form,
+# so the sandbox emits what the spec asks for while accepting what the world
+# sends.
 UOM_ALIASES: dict[str, str] = {
+    # Count. `PCE` and `PC` are not Rec 20 codes but are ubiquitous (see above).
     "ea": "EA", "each": "EA", "ea.": "EA", "e": "EA",
     "pce": "EA", "pc": "EA", "pcs": "EA", "piece": "EA", "pieces": "EA",
-    "c62": "EA", "h87": "EA", "st": "EA", "unit": "EA", "units": "EA", "un": "EA",
-    "bx": "BX", "box": "BX", "boxes": "BX",
-    "cs": "CS", "case": "CS",
-    "ct": "CT", "carton": "CT",
-    "pk": "PK", "pack": "PK", "packet": "PK",
-    "bg": "BG", "bag": "BG",
+    "h87": "H87", "c62": "C62", "nar": "NAR",
+    "unit": "EA", "units": "EA", "un": "EA",
+    # Packaging — Rec 21, X-prefixed. Bare forms accepted, conformant emitted.
+    "bx": "XBX", "box": "XBX", "boxes": "XBX", "xbx": "XBX",
+    "cs": "XCS", "case": "XCS", "xcs": "XCS",
+    "ct": "XCT", "carton": "XCT", "xct": "XCT",
+    "pk": "XPK", "pack": "XPK", "xpk": "XPK",
+    "pa": "XPA", "packet": "XPA", "xpa": "XPA",
+    "bg": "XBG", "bag": "XBG", "xbg": "XBG",
+    "ro": "XRO", "rol": "XRO", "roll": "XRO", "xro": "XRO",
+    "rl": "XRL", "reel": "XRL", "xrl": "XRL",
+    "tu": "XTU", "tube": "XTU", "xtu": "XTU",
+    "dr": "XDR", "drum": "XDR", "xdr": "XDR",
+    # Count units that survived in Rec 20.
     "rm": "RM", "ream": "RM",
     "dzn": "DZN", "dz": "DZN", "dozen": "DZN",
-    "pr": "PR", "pair": "PR",
-    "rol": "ROL", "roll": "ROL",
-    "set": "SET",
+    "pr": "PR", "pair": "PR", "npr": "PR",   # NPR is deprecated: "use pair"
+    "set": "SET", "kt": "KT", "kit": "KT",
+    # Physical units — all normative Annex I.
     "kgm": "KGM", "kg": "KGM",
     "grm": "GRM", "g": "GRM",
+    "tne": "TNE", "tonne": "TNE",
     "ltr": "LTR", "l": "LTR", "litre": "LTR", "liter": "LTR",
     "mtr": "MTR", "m": "MTR", "metre": "MTR", "meter": "MTR",
+    "cmt": "CMT", "mmt": "MMT", "mtk": "MTK", "mtq": "MTQ",
+    "fot": "FOT", "foot": "FOT", "inh": "INH", "inch": "INH",
     "hur": "HUR", "hr": "HUR", "hour": "HUR",
     "day": "DAY",
 }
 
-# Rec 21 PACKAGING codes are a DIFFERENT list from Rec 20 and get mixed into
-# UoM fields constantly. They are recognised so we can say "this is a Rec 21
-# packaging code, not a Rec 20 unit" rather than silently accepting or
-# silently rejecting.
-REC21_PACKAGING_PREFIXED = re.compile(r"^X[A-Z]{2}$")
+# Rec 21 packaging codes carry an X prefix when used as a unit of measure.
+REC21_PACKAGING_PREFIXED = re.compile(r"^X[A-Z0-9]{2}$")
+
+# Deleted from Rec 20 and moved to Rec 21. Sending the bare form is legal-
+# looking, extremely common, and nonconformant.
+REC20_DELETED_PACKAGING = frozenset(
+    {"BX", "CS", "CT", "PK", "PA", "BG", "RO", "RL", "TU", "JR", "TN",
+     "CY", "CA", "BE", "ST", "PF"}
+)
+
+# Not Rec 20 codes in any revision we could verify, despite being widespread.
+NOT_REC20 = frozenset({"PCE", "DZ", "ROL"})
 
 
-def normalise_uom(value: str) -> tuple[str, bool]:
-    """Return `(normalised_code, was_already_canonical)`.
+def normalise_uom(value: str) -> tuple[str, Optional[str]]:
+    """Return `(emitted_code, advisory_or_None)`.
 
-    The second element is what the advisory layer reports on: a supplier
-    sending `each` gets a working cart AND a note that JAGGAER would have
-    silently coerced it to `EA` and Coupa would have failed the import
-    outright."""
+    The advisory is the point. A supplier sending `BX` gets a working cart AND
+    a note that the code was deleted from Rec 20, that the conformant value is
+    `XBX`, that JAGGAER would silently coerce an unrecognised unit to `EA` —
+    turning a box of 100 into 100 items — and that Coupa would fail the import
+    outright instead. Same input, three outcomes, none of them an error."""
     raw = (value or "").strip()
     if not raw:
-        return CANONICAL_UOM, False
-    if raw in UOM_ALIASES.values():
-        return raw, True
-    return UOM_ALIASES.get(raw.lower(), raw), False
+        return CANONICAL_UOM, "No unit of measure supplied; defaulted to EA."
+
+    upper = raw.upper()
+    if upper in AMBIGUOUS_UOM:
+        return raw, AMBIGUOUS_UOM[upper]
+    if upper in NOT_REC20:
+        mapped = UOM_ALIASES.get(raw.lower(), raw)
+        return mapped, (
+            f"'{raw}' is not a UN/CEFACT Rec 20 code in any verified revision, "
+            "though it is very widely sent — SAP ships internal unit ST with "
+            f"ISO code PCE. Emitting '{mapped}' instead."
+        )
+    if upper in REC20_DELETED_PACKAGING:
+        mapped = UOM_ALIASES.get(raw.lower(), raw)
+        return mapped, (
+            f"'{raw}' was deleted from Rec 20 and moved to Rec 21, where it "
+            f"takes an X prefix: '{mapped}'. The bare form is what most "
+            "catalogues send and nothing rejects it."
+        )
+
+    mapped = UOM_ALIASES.get(raw.lower())
+    if mapped is None:
+        return raw, (
+            f"'{raw}' is not a unit of measure this sandbox recognises. "
+            "JAGGAER silently maps unrecognised units to EA — so a box of 100 "
+            "becomes 100 individual items — while Coupa fails the cart import."
+        )
+    if mapped == raw:
+        return mapped, None
+    return mapped, f"Normalised '{raw}' to '{mapped}'."
