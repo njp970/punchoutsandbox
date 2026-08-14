@@ -241,6 +241,32 @@ check("the sample is loaded, not the empty textarea",
       "the browser posts BOTH fields; the first one wins")
 
 
+print("\n11. Search-engine ownership files")
+# Every one of these must be OPEN and must return its exact body. Gated, it
+# answers 200 with the signup form, and Google reports "we found the file but
+# its content was wrong" — which sends you looking at the file rather than at
+# the gate. /robots.txt failed in exactly that way.
+from app import signup as _signup
+
+check("at least one verification file is configured",
+      bool(_signup.SITE_VERIFICATION), list(_signup.SITE_VERIFICATION))
+for path, expected in _signup.SITE_VERIFICATION.items():
+    check(f"{path} is not behind the gate", _signup.is_open(path))
+    status, body, headers = get(path)
+    check(f"{path} returns 200", status == 200, f"HTTP {status}")
+    check(f"{path} returns exactly its token, nothing else",
+          body.strip() == expected,
+          repr(body[:80]) + " — any surrounding HTML fails verification")
+    check(f"{path} is not the signup form", GATE not in body)
+    check(f"{path} is served as html", "html" in headers.get("content-type", ""),
+          headers.get("content-type", ""))
+
+_, sitemap_body, _ = get("/sitemap.xml")
+for path in _signup.SITE_VERIFICATION:
+    check(f"{path} is kept out of the sitemap", path not in sitemap_body,
+          "it is a proof of ownership, not a page")
+
+
 print("\n" + "=" * 70)
 if failures:
     print(f"FAILED ({len(failures)}): " + ", ".join(failures))

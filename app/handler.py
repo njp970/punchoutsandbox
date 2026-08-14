@@ -282,6 +282,20 @@ def ingest_preview(request: Request) -> Response:
         has_cart=bool(cart)))
 
 
+def _verification_route(body: str):
+    def route(request: Request) -> Response:
+        # text/plain would satisfy Google too, but the file it asked for ends
+        # in .html and serving what was asked for costs nothing.
+        return Response(body=body + "\n", content_type="text/html; charset=utf-8")
+    return route
+
+
+# Registered from signup.SITE_VERIFICATION so the route table and the gate's
+# open-path list cannot disagree — see the comment beside that dict.
+for _path, _body in signup.SITE_VERIFICATION.items():
+    router.add("GET", _path, _verification_route(_body))
+
+
 @router.get("/robots.txt")
 def robots(request: Request) -> Response:
     """Both this and /sitemap.xml previously fell through to the signup gate

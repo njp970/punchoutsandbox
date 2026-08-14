@@ -54,9 +54,26 @@ from .tenants import Tenant, store, valid_email
 from .ui.render import render
 
 #: Paths reachable with no account. Prefix match; see `is_open`.
+#: Search-engine ownership proofs. Path -> the exact body that must come back.
+#:
+#: Defined HERE, next to the gate, rather than beside the route that serves
+#: them. THE GATE IS THE TRAP: an unregistered path falls through to the signup
+#: form and answers 200 with HTML, so Google reports "we found the file but its
+#: content was wrong" — which sends you looking at the file rather than at the
+#: gate. /robots.txt broke in exactly that way. Keeping the list adjacent to
+#: OPEN_PATHS means one edit opens the path and defines the content together.
+#:
+#: A map rather than one constant because these accumulate: Google re-issues a
+#: file if a property is removed and re-added, and Bing wants its own.
+SITE_VERIFICATION = {
+    "/google75af1e031b9d820d.html":
+        "google-site-verification: google75af1e031b9d820d.html",
+}
+
+
 OPEN_PATHS = ("/docs", "/signup", "/static/", "/favicon.ico", "/validate",
               "/contact", "/reference", "/robots.txt", "/sitemap.xml",
-              "/ingest")
+              "/ingest", *SITE_VERIFICATION)
 
 
 def is_open(path: str) -> bool:
