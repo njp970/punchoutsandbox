@@ -1,0 +1,160 @@
+================================================================================
+cXML LICENSE AGREEMENT
+================================================================================
+
+This file is attached to satisfy the requirement in clause 3 of the agreement
+below:
+
+    "If you publish, copy or distribute the Specification, then this License
+     must be attached."
+
+It governs the .dtd files in THIS DIRECTORY ONLY. Everything else in this
+repository is under the repository's own licence — see /LICENSE. Do not assume
+the two are the same.
+
+--------------------------------------------------------------------------------
+PROVENANCE
+--------------------------------------------------------------------------------
+Licensor        Ariba, Inc.
+Canonical URL   https://www.cxml.org/license.html
+Retrieved       2026-08-14
+SHA-256 of the
+retrieved HTML  7a5515c1cef3244efbf12122b58cd2327c57411ce7d6d5f5a091036cab081091
+
+Clause 1 states that "the rights granted under this license with respect to the
+Specification are subject to the version of the Agreement in effect at the time
+it was downloaded or accessed by you". This copy is therefore dated and hashed
+rather than merely cited: the version reproduced below is the version we
+accessed, and is the version our rights derive from. Licensor may publish new
+versions at any time; that does not retroactively change these.
+
+NOTE ON THE URL PRINTED INSIDE THE DTDs. Every .dtd file in this directory
+carries the header:
+
+    For cXML license agreement information, please see
+    http://www.cxml.org/home/license.asp
+
+**That URL is dead and returns 404**, and the site's own "License Agreement"
+nav link resolves to the canonical URL above rather than to it. The stale
+pointer is the reason this file exists as a full copy rather than a one-line
+reference: a licence you cannot reach is, in practice, a licence nobody reads.
+
+WHAT THE GRANT REQUIRES OF US. Two conditions, both of which this repository
+meets and must keep meeting:
+
+  1. The Specification must be UNMODIFIED. The DTDs here are byte-identical to
+     the upstream archive; README.md records the SHA-256 of each, and
+     tests/test_dtd_licence.py fails the build if any of them changes.
+  2. This licence must be attached. That is this file.
+
+What follows is a faithful plain-text rendering of the agreement text at the
+canonical URL. Where the two differ, the canonical HTML governs.
+
+--------------------------------------------------------------------------------
+
+IMPORTANT: PLEASE CAREFULLY READ THIS cXML LICENSE AGREEMENT ("LICENSE")
+BEFORE USING THE cXML SPECIFICATION ("SPECIFICATION"). BY USING THE
+SPECIFICATION, YOU AGREE TO BE BOUND BY THE TERMS OF THIS LICENSE. IF YOU DO
+NOT AGREE TO THE TERMS OF THIS LICENSE, DO NOT USE OR ACCESS THE
+SPECIFICATION. Licensor may publish new versions (including revisions) of this
+Agreement from time to time on the cXML site (www.cxml.org). Past revisions to
+this Agreement will be accessible below via the Past Revisions web link. The
+rights granted under this license with respect to the Specification are
+subject to the version of the Agreement in effect at the time it was
+downloaded or accessed by you.
+
+1. Openness. cXML is designed and intended to be an open standard to
+   facilitate electronic commerce. You are welcome to use and adopt this
+   standard, and to submit comments, recommendations, and suggestions to
+   cXML.org. Once submitted, your comments go through an approval process —
+   and your comments may ultimately be incorporated into cXML.
+
+2. License. Subject to the terms and conditions herein, Licensor hereby grants
+   to you a perpetual, nonexclusive, royalty-free, worldwide right and license
+   to use the Specification under the Licensor intellectual property necessary
+   to implement the Specification to (a) use, copy, publish, and distribute
+   (including but not limited to distribution as part of a separate computer
+   program) the unmodified Specification, and (b) to implement and use the
+   Specification, including the cXML tags and schema guidelines included in
+   the Specification for the purpose of creating, distributing, selling or
+   otherwise transferring computer programs that adhere to such guidelines. If
+   you use, publish, or distribute the unmodified Specification, you may call
+   it "cXML".
+
+3. Restrictions. Your rights under this License will terminate automatically
+   without notice from Licensor if you fail to comply with any terms of this
+   License. Licensor expressly reserves all other rights it may have in the
+   material and subject matter of the Specification, and you acknowledge and
+   agree that Licensor owns all right, title, and interest in and to the
+   Specification, however, Licensor does not own the computer programs or
+   related documentation you create, nor does Licensor own the underlying XML
+   or non-Ariba intellectual property from which cXML has been derived. You
+   agree to not assert any intellectual property rights that would be
+   necessarily infringed by implementation or other use of the Specification
+   against Licensor or any other entity with respect to such implementation or
+   other use of the Specification; provided that your agreement to not assert
+   shall cease to apply to any entity including Licensor (except where
+   Licensor or another entity is asserting intellectual property rights
+   against you as part of an assertion that you have breached this Agreement)
+   that asserts against you that its intellectual property rights are
+   infringed by your implementation or other use of the Specification. If you
+   publish, copy or distribute the Specification, then this License must be
+   attached. If you submit any comments or suggestions to Licensor, and
+   Licensor modifies the Specification based on your input, Licensor shall own
+   the modified version of the Specification.
+
+4. No Warranty. YOU ACKNOWLEDGE AND AGREE THAT ANY USE OF THE SPECIFICATION BY
+   YOU IS AT YOUR OWN RISK. THE SPECIFICATION IS PROVIDED FOR USE "AS IS"
+   WITHOUT WARRANTY OF ANY KIND. LICENSOR AND ITS SUPPLIERS DISCLAIM ALL
+   WARRANTIES OF ANY KIND, INCLUDING BUT NOT LIMITED TO ANY EXPRESS
+   WARRANTIES, STATUTORY WARRANTIES, AND ANY IMPLIED WARRANTIES OF:
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMNT.
+   YOUR SOLE AND EXCLUSIVE REMEDY RELATING TO YOUR USE OF THE SPECIFICATION
+   SHALL BE TO DISCONTINUE USING THE SPECIFICATION.
+
+5. Limitation of Liability. TO THE MAXIMUM EXTENT PERMITTED BY LAW, UNDER NO
+   CIRCUMSTANCES SHALL LICENSOR BE LIABLE FOR ANY DAMAGES WHATSOEVER RELATING
+   TO THIS LICENSE OR YOUR USE OF THE SPECIFICATION (INCLUDING BUT NOT LIMITED
+   TO INCIDENTAL, SPECIAL, PUNITIVE, DIRECT, INDIRECT, OR CONSEQUENTIAL
+   DAMAGES), REGARDLESS OF WHETHER A CLAIM IS BASED ON TORT, CONTRACT, OR
+   OTHER THEORY OF LIABILITY, AND EVEN IF LICENSOR IS ADVISED OF THE
+   POSSIBILITY OF SUCH DAMAGE. To the extent your jurisdiction does not allow
+   any of the above exclusions of damages, in such case you agree that
+   Licensor's total liability to you for all damages under this License shall
+   not exceed the amount of ten dollars ($10.00).
+
+6. Government End Users. If the Specification is supplied to the United States
+   Government, the Specification is classified as "restricted computer
+   software" as defined in clause 52.227-19 of the FAR. The United States
+   Government's rights to the Specification are as provided in clause
+   52.227-19 of the FAR.
+
+7. This License shall be deemed to have been made in, and shall be construed
+   pursuant to the laws of the State of California and the federal U.S. laws
+   applicable therein, excluding its conflict of laws provisions. Any legal
+   action or proceeding relating to this License shall be instituted in a
+   state or federal court in San Francisco, Santa Clara or San Mateo County,
+   California, and each party hereby consents to personal jurisdiction in such
+   counties. If for any reason a court of competent jurisdiction finds any
+   provision, or portion thereof, to be unenforceable, the remainder of this
+   License shall continue in full force and effect.
+
+8. You assume the entire risk resulting from your use of the Specification.
+
+9. Complete Agreement. This License is the complete and exclusive statement,
+   and an absolute integration of the mutual understanding of the parties and
+   supersedes and cancels all previous written and oral agreements and
+   communications relating to the subject matter of this License. You
+   acknowledge that any material breach by you of the provisions of the
+   License will cause irreparable damage to Licensor and that a remedy at law
+   will be inadequate. Therefore, in addition to any and all other legal or
+   equitable remedies, Licensor will be entitled to seek injunctive relief
+   necessary to remediate the breach of this License. Ariba, Inc. shall be
+   deemed the Licensor.
+
+10. Notices. Any notice directed to Licensor must be sent in writing to
+   comments@cxml.org.
+
+Past Revisions
+
+July 19, 2004

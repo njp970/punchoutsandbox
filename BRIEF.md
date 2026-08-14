@@ -41,7 +41,9 @@ Corroborating facts from the same research:
 - **TradeCentric / PunchOut2Go start around $10,000/yr** and are white-glove.
   That is the incumbent price point in the neighbourhood — they sell the
   integration, not a test harness, but it establishes that budget exists.
-- **cXML DTDs are free** at cxml.org, no registration. No licensing obstacle to
+- **cXML DTDs are free** at cxml.org, no registration. Licence confirmed
+  2026-08-14 (Ariba, Inc.; perpetual, royalty-free; unmodified copies must
+  carry the licence — both conditions enforced by a test). No obstacle to
   implementing a conforming supplier.
 
 ### The specific pain, stated precisely

@@ -89,12 +89,24 @@ Cloudflare credentials come from the environment (`CLOUDFLARE_API_TOKEN`,
 `CLOUDFLARE_ACCOUNT_ID`) and are never committed. See the deploy script's
 docstring.
 
-## Licence note
+## Licence
 
-The vendored cXML DTDs are third-party. **Their licence terms could not be
-established** — cxml.org's own licence link is broken. Read
-[app/cxml/dtd/README.md](app/cxml/dtd/README.md) before making this repository
-public.
+This project's own code is **MIT** — see [LICENSE](LICENSE).
+
+The vendored cXML DTDs in `app/cxml/dtd/` are **not**. They are copyright
+Ariba, Inc. and ship under the [cXML License
+Agreement](app/cxml/dtd/LICENSE-cXML.txt), which permits copying and
+distributing the *unmodified* Specification provided the licence is attached.
+Both conditions are enforced by `tests/test_dtd_licence.py` rather than left as
+good intentions: it checksums every DTD and fails if one is edited.
+
+Practical upshot: MIT's permission to modify **stops at those files**. If a DTD
+needs changing, the change belongs upstream, not here.
+
+The licence URL printed inside the DTDs themselves (`cxml.org/home/license.asp`)
+is dead and returns 404; the live agreement is at
+[cxml.org/license.html](https://www.cxml.org/license.html).
+[app/cxml/dtd/README.md](app/cxml/dtd/README.md) has the full reasoning.
 
 Generated invoices and PDFs are synthetic, always watermarked as test
 artifacts, and always for invented companies. Never generate documents
