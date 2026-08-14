@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from decimal import Decimal as D
 from typing import Optional
 
-from . import inspector, sessions, storefront
+from . import inspector, sessions, setup_request, storefront
 from .catalogue.data import BY_SKU
 from .catalogue.taxonomy import normalise_uom
 from .cxml.punchout import (CartItem, build_cancel, build_empty_cart,
@@ -30,6 +30,7 @@ from .cxml.punchout import (CartItem, build_cancel, build_empty_cart,
 from .http import (MethodNotAllowed, Request, Response, Router, html,
                    parse_event, redirect, require_edge)
 from .sessions import Session
+from .ui.render import render
 
 
 def _cart_item(sku: str, quantity: int) -> CartItem:
@@ -201,6 +202,22 @@ def validate_document(request: Request) -> Response:
     """The product's front door — and the only route that exercises `lxml`
     and the vendored DTDs, so it is also the deployment's liveness proof."""
     return inspector.view_validate(request)
+
+
+@router.post("/punchout/setup")
+def punchout_setup(request: Request) -> Response:
+    """The machine-facing front door: a buyer system POSTs its
+    PunchOutSetupRequest here and gets a StartPage URL back."""
+    return setup_request.handle_setup(
+        request, site_url=os.environ.get("SITE_URL", "https://punchoutsandbox.com"))
+
+
+@router.get("/docs")
+def docs(request: Request) -> Response:
+    session, cart = get_session(request)
+    return html(render(
+        "docs.html", nav="docs", session=session, cart_count=len(cart),
+        site_url=os.environ.get("SITE_URL", "https://punchoutsandbox.com")))
 
 
 @router.get("/console")

@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}How to use PunchOut Sandbox{% endblock %}
+{% block content %}
+
+<h1>How to use this</h1>
+<p class="muted" style="margin-top:-4px;max-width:64ch">
+  A hosted virtual supplier. Point your buyer-side punchout client at it,
+  shop, and get a real cXML cart back &mdash; validated against the actual
+  cXML DTDs on the way through. Free, no signup, nothing stored beyond an hour.
+</p>
+
+<div class="card">
+  <div class="card-header"><h2 class="card-title">1. Your endpoint</h2></div>
+  <p class="card-note">
+    POST a <code>PunchOutSetupRequest</code> here. This is the only URL your
+    system needs.
+  </p>
+  <div class="copyfield">
+    <code>{{ site_url }}/punchout/setup</code>
+    <button type="button" onclick="navigator.clipboard.writeText('{{ site_url }}/punchout/setup')">Copy</button>
+  </div>
+  <div class="table-wrap" style="margin-top:14px">
+    <table>
+      <tr><th>Method</th><td class="mono">POST</td></tr>
+      <tr><th>Content-Type</th><td class="mono">text/xml</td></tr>
+      <tr><th>Credentials</th>
+          <td>Send whatever you like &mdash; any <code>From</code>,
+              <code>To</code>, <code>Sender</code> and
+              <code>SharedSecret</code> are accepted. They are
+              <strong>recorded and echoed back</strong> in the response
+              <code>Status</code> so you can see exactly what arrived.</td></tr>
+      <tr><th>Required</th>
+          <td>Only <code>BrowserFormPost/URL</code>. Without it there is
+              nowhere to return the cart, so that one is refused up front
+              rather than ten minutes into shopping.</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2 class="card-title">2. What comes back</h2></div>
+  <p class="card-note">
+    A <code>PunchOutSetupResponse</code> with a <code>StartPage</code> URL.
+    Open it in a browser (or an iframe, as most buyer platforms do) and you
+    are in the shop.
+  </p>
+  <div class="doc">
+    <div class="doc-bar"><span>PunchOutSetupResponse</span></div>
+    <pre class="doc-body"><code>&lt;Response&gt;
+  &lt;Status code="200" text="OK"&gt;operation=create; from=YOURID; ...
+      conformant=true; errors=0; advisories=1&lt;/Status&gt;
+  &lt;PunchOutSetupResponse&gt;
+    &lt;StartPage&gt;
+      &lt;URL&gt;{{ site_url }}/shop?session=…&lt;/URL&gt;
+    &lt;/StartPage&gt;
+  &lt;/PunchOutSetupResponse&gt;
+&lt;/Response&gt;</code></pre>
+  </div>
+  <p class="card-note" style="margin-top:12px">
+    <strong>Read the <code>Status</code> text.</strong> It reports which
+    credentials arrived, whether your <code>BuyerCookie</code> was present,
+    and how many conformance errors and advisories your request had. That is
+    the fastest feedback loop here.
+  </p>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2 class="card-title">3. Shop, then return the cart</h2></div>
+  <p class="card-note">
+    Add items, go to the cart, press <em>Return cart</em>. The sandbox renders
+    a browser form that POSTs a <code>PunchOutOrderMessage</code> to your
+    <code>BrowserFormPost</code> URL &mdash; which is how the protocol really
+    works. It is not a server-to-server call, and if your endpoint depends on
+    cookies or blocks framing, that is exactly where it breaks.
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>What you press</th><th>What your system receives</th></tr></thead>
+      <tbody>
+        <tr><td>Return cart</td>
+            <td>A <code>PunchOutOrderMessage</code> with your items.
+                <code>Total</code> <strong>excludes tax and shipping</strong>,
+                per the spec.</td></tr>
+        <tr><td>Return empty cart</td>
+            <td>A message with no <code>ItemIn</code>. On an
+                <code>edit</code> operation this instructs you to
+                <strong>delete</strong> the requisition lines.</td></tr>
+        <tr><td>Return 204</td>
+            <td><code>Status code="204"</code> &mdash; the user cancelled;
+                <strong>change nothing</strong>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="finding finding-advisory" style="margin-top:12px">
+    <div class="finding-msg">
+      Those last two are the sharpest thing to test. They look almost
+      identical on the wire and mean opposite things &mdash; a supplier whose
+      &ldquo;user closed the tab&rdquo; path sends an empty cart instead of a
+      204 silently wipes the buyer&rsquo;s requisition.
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2 class="card-title">4. Try it without writing any code</h2></div>
+  <p class="card-note">Paste this into a terminal:</p>
+  <div class="doc">
+    <pre class="doc-body"><code>curl -s -X POST {{ site_url }}/punchout/setup \
+  -H 'Content-Type: text/xml' \
+  --data-binary @- &lt;&lt;'XML'
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;!DOCTYPE cXML SYSTEM "http://xml.cxml.org/schemas/cXML/1.2.071/cXML.dtd"&gt;
+&lt;cXML payloadID="demo@example.com" timestamp="2026-01-01T00:00:00+00:00"&gt;
+ &lt;Header&gt;
+  &lt;From&gt;&lt;Credential domain="NetworkID"&gt;
+    &lt;Identity&gt;my-company&lt;/Identity&gt;&lt;/Credential&gt;&lt;/From&gt;
+  &lt;To&gt;&lt;Credential domain="NetworkID"&gt;
+    &lt;Identity&gt;meridian&lt;/Identity&gt;&lt;/Credential&gt;&lt;/To&gt;
+  &lt;Sender&gt;&lt;Credential domain="NetworkID"&gt;
+    &lt;Identity&gt;my-company&lt;/Identity&gt;
+    &lt;SharedSecret&gt;anything&lt;/SharedSecret&gt;&lt;/Credential&gt;
+   &lt;UserAgent&gt;curl&lt;/UserAgent&gt;&lt;/Sender&gt;
+ &lt;/Header&gt;
+ &lt;Request deploymentMode="test"&gt;
+  &lt;PunchOutSetupRequest operation="create"&gt;
+   &lt;BuyerCookie&gt;my-session-123&lt;/BuyerCookie&gt;
+   &lt;BrowserFormPost&gt;&lt;URL&gt;https://example.com/return&lt;/URL&gt;&lt;/BrowserFormPost&gt;
+  &lt;/PunchOutSetupRequest&gt;
+ &lt;/Request&gt;
+&lt;/cXML&gt;
+XML</code></pre>
+  </div>
+  <p class="card-note" style="margin-top:12px">
+    Open the <code>StartPage</code> URL it returns. To watch the cart come
+    back without building a receiver, point <code>BrowserFormPost/URL</code>
+    at a request-capture service.
+  </p>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2 class="card-title">5. The catalogue lies on purpose</h2></div>
+  <p class="card-note">
+    Eight products carry a <span class="pill pill-warn">quirk</span> badge.
+    Each reproduces a documented real-world failure, and each is labelled with
+    what goes wrong and on which platform. Add one deliberately and watch what
+    your system does with it.
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Quirk</th><th>What it breaks</th></tr></thead>
+      <tbody>
+        <tr><td>Free-text unit (<code>EACH</code>)</td>
+            <td>JAGGAER silently maps unknown units to <code>EA</code>; Coupa
+                fails the import outright</td></tr>
+        <tr><td>Pack size in the unit (<code>100/BX</code>)</td>
+            <td>Read as 100 boxes rather than a box of 100</td></tr>
+        <tr><td>Description over 256 chars</td>
+            <td>Silently truncated on the PO, after passing validation</td></tr>
+        <tr><td>Aux ID over 100 chars</td>
+            <td>Hard cart-return failure on JAGGAER; fine on Coupa</td></tr>
+        <tr><td>Non-ASCII description</td>
+            <td>Mojibake, if you return the cart as
+                <code>cxml-urlencoded</code></td></tr>
+        <tr><td>Price with 5 decimals</td>
+            <td>Rounding disagreement on the extended price</td></tr>
+        <tr><td>Punctuated UNSPSC</td>
+            <td>Not categorised; spend analytics silently wrong</td></tr>
+        <tr><td>Delimiters in the part number</td>
+            <td>Invoice matching fails later, not now</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2 class="card-title">6. Validate any document</h2></div>
+  <p class="card-note">
+    <a href="/validate">/validate</a> takes any cXML document and checks it
+    against the real DTDs. It separates <strong>errors</strong> (the DTD says
+    you are wrong &mdash; not a matter of opinion) from
+    <strong>advisories</strong> (valid, and will still cause you trouble).
+    Useful on its own, without a punchout session.
+  </p>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2 class="card-title">Limits, honestly</h2></div>
+  <div class="table-wrap">
+    <table>
+      <tr><th>Sessions</th><td>Expire after 1 hour. Nothing is kept.</td></tr>
+      <tr><th>Credentials</th><td>Not enforced. Anything is accepted and echoed back.</td></tr>
+      <tr><th>OCI</th><td>Not yet supported &mdash; cXML only.</td></tr>
+      <tr><th>Companies</th>
+          <td>Every supplier, brand and document here is invented. Generated
+              documents are test artifacts and must not be used as anything
+              else.</td></tr>
+      <tr><th>Tax rates</th>
+          <td>Illustrative, compiled 2026-08-14. Do not use them as a tax
+              reference.</td></tr>
+    </table>
+  </div>
+  <p class="card-note" style="margin:12px 0 0">
+    Found something wrong, or need a case this does not cover?
+    That is worth knowing &mdash;
+    <a href="https://github.com/njp970/punchoutsandbox">the source is here</a>.
+  </p>
+</div>
+
+{% endblock %}

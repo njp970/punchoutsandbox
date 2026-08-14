@@ -43,28 +43,19 @@ do the same here — `.gitignore` already covers `infra/.env`.
 `CLOUDFLARE_ACCOUNT_ID` is not required by this script — every call here is
 zone-scoped and the zone is resolved by name.
 
-`EDGE_SHARED_SECRET` is generated here if you do not supply one, written to
-BOTH sides of the boundary (the Cloudflare transform rule and the Lambda's
-environment), and printed once. It is not stored anywhere else. If you lose
-it, re-run this script — it will mint and install a fresh one.
-
 =============================================================================
-WHAT IT DOES
+WHAT IT DOES — AND WHAT IT DELIBERATELY DOES NOT
 =============================================================================
 1. Reads the Function URL from the deployed CloudFormation stack output.
 2. Upserts a PROXIED CNAME for the apex and for `www` pointing at that origin.
    Cloudflare's CNAME flattening is what makes an apex CNAME legal.
-3. Upserts a `http_request_late_transform` ruleset injecting
-   `X-Edge-Secret: <secret>` on every proxied request.
-4. Sets `EDGE_SHARED_SECRET` on the Lambda so `app/http.py` starts enforcing.
 
-Order matters: step 4 comes LAST. Enforcing the header on the Lambda before
-the transform rule exists would take the site down for exactly as long as it
-takes you to read the traceback.
+That is all. It does NOT set the Host header and does NOT install the edge
+secret — both belong to `deploy_edge_worker.py`, which must be run after this.
+See the note in `main()` for the outage that division of labour prevents.
 """
 import argparse
 import os
-import secrets
 import sys
 
 import boto3
@@ -72,8 +63,7 @@ import requests
 
 CF_API = "https://api.cloudflare.com/client/v4"
 ZONE_NAME = "punchoutsandbox.com"
-RULESET_PHASE = "http_request_late_transform"
-HEADER_NAME = "X-Edge-Secret"
+
 
 
 def _auth_headers() -> tuple[dict[str, str], str]:
@@ -149,8 +139,6 @@ def main() -> int:
     headers, auth_mode = _auth_headers()
     print(f"auth    : {auth_mode}")
 
-    edge_secret = os.environ.get("EDGE_SHARED_SECRET") or secrets.token_urlsafe(32)
-
     # The Function URL output is a full https URL with a trailing slash; the
     # DNS record needs the bare hostname.
     url = function_url_from_stack(args.stage, args.region)
@@ -174,8 +162,7 @@ def main() -> int:
         print("\n-- dry run, nothing written --")
         print(f"  CNAME {ZONE_NAME} -> {origin_host} (proxied)")
         print(f"  CNAME www.{ZONE_NAME} -> {origin_host} (proxied)")
-        print(f"  transform rule sets {HEADER_NAME} on every request")
-        print(f"  lambda env EDGE_SHARED_SECRET would be set")
+        print("  (Host header + edge secret are deploy_edge_worker.py's job)")
         return 0
 
     # ---- 1. DNS ---------------------------------------------------------
@@ -198,45 +185,29 @@ def main() -> int:
             _cf(session, "POST", f"/zones/{zone_id}/dns_records", json=record)
             print(f"dns     : created {name}")
 
-    # ---- 2. Transform rule injecting the edge secret --------------------
+    # ---- 2. The Host header and the edge secret are NOT handled here ----
+    #
+    # Both are the edge Worker's job (infra/scripts/deploy_edge_worker.py),
+    # and there is a scar behind that division of labour.
+    #
+    # This script used to install a transform rule that injected
+    # X-Edge-Secret, generating a fresh secret each run. Once the Worker also
+    # began setting that header with its OWN generated secret, the two fought:
+    # whichever ran last won, so the site returned an intermittent mix of 200s
+    # and 403s that looked exactly like route propagation and was not.
+    #
+    # ONE MECHANISM OWNS THE SECRET. That is the Worker, because it has to set
+    # the Host header anyway (Lambda Function URLs reject a mismatched Host,
+    # and Cloudflare's own Host override is a paid feature). Do not reintroduce
+    # a transform rule here.
     # PUT on the phase entrypoint replaces the whole ruleset. That is what we
     # want — this rule is the only late-transform rule this zone should have,
     # and merging into an unknown existing list is how you end up with four
     # copies of it after four deploys.
-    _cf(
-        session, "PUT",
-        f"/zones/{zone_id}/rulesets/phases/{RULESET_PHASE}/entrypoint",
-        json={
-            "rules": [
-                {
-                    "action": "rewrite",
-                    "action_parameters": {
-                        "headers": {HEADER_NAME: {"operation": "set", "value": edge_secret}}
-                    },
-                    "expression": "true",
-                    "description": "PunchOut Sandbox: prove this request came via Cloudflare",
-                    "enabled": True,
-                }
-            ]
-        },
-    )
-    print(f"edge    : transform rule installed ({HEADER_NAME})")
 
-    # ---- 3. Teach the Lambda the same secret, LAST ----------------------
-    lam = boto3.client("lambda", region_name=args.region)
-    fn_name = f"punchout-sandbox-{args.stage}"
-    current = lam.get_function_configuration(FunctionName=fn_name)["Environment"]["Variables"]
-    lam.update_function_configuration(
-        FunctionName=fn_name,
-        Environment={"Variables": {**current, "EDGE_SHARED_SECRET": edge_secret}},
-    )
-    print(f"lambda  : EDGE_SHARED_SECRET set on {fn_name}")
-
-    print(
-        "\nDone. Set Cloudflare SSL/TLS mode to 'Full (strict)' if it is not "
-        "already —\nAWS serves a valid certificate for the origin, so strict "
-        "verification passes\nwith nothing further to configure."
-    )
+    print("\nDNS done. NOW RUN scripts/deploy_edge_worker.py — until it runs,")
+    print("every request through Cloudflare gets a 403 from Lambda, because a")
+    print("Function URL rejects any Host but its own.")
     return 0
 
 
