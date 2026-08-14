@@ -114,6 +114,24 @@ class SiteStack(Stack):
             # 512MB the same request bills roughly the same total (half the
             # rate, twice the duration) while feeling twice as slow to a human.
             memory_size=1024,
+            # THE SETTING THAT MAKES SHARING XENIA'S ACCOUNT SAFE.
+            #
+            # Account-level Lambda concurrency defaults to 1000 and is shared
+            # by every function in the account. Without a cap, a public
+            # unauthenticated tool being hammered — BRIEF.md §3's "open
+            # invitation to burn compute" — could consume that pool and
+            # throttle Xenia's production handlers. A free lead-gen toy taking
+            # down the product it exists to promote would be a bad day.
+            #
+            # Reserved concurrency both guarantees these slots AND caps the
+            # function at them, so the sandbox can never take more however
+            # hard it is pushed. 20 is generous for single-digit users per
+            # year (RESEARCH.md §D) and leaves 980 for everything else.
+            #
+            # The cost of the cap is that a genuine traffic spike gets 429s
+            # rather than scaling. For a free sandbox that is the correct
+            # trade: throttling this is always better than throttling Xenia.
+            reserved_concurrent_executions=20,
             environment={
                 "SANDBOX_TABLE": table.table_name,
                 "STAGE": stage,

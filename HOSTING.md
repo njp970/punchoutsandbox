@@ -60,20 +60,43 @@ Taken: `punchout.dev` · `cxml.dev` · `punchin.dev/.io` · `counterparty.dev` �
 
 ---
 
-## 2. AWS: logically separate, same organisation
+## 2. AWS: the existing Xenia account, eu-west-2
 
-**Create a new member account in the existing AWS Organization.**
-(AWS Organizations → Add an AWS account.) Same payer, same bill, but its own
-account ID, own IAM boundary, own resource namespace, own blast radius. If a
-free lead-gen toy gets hammered, Xenia's production account is untouched.
+**Decision (2026-08-14): deploy into Xenia's own AWS account.** A separate
+member account was considered and rejected — more admin than the isolation was
+worth for a free tool, and the free-tier allowances are aggregated across an
+organisation anyway, so a member account would not have bought a fresh one.
 
-**Caveat worth knowing before you commit:** AWS Free Tier is aggregated at the
-*organization* level under consolidated billing. A new member account does
-**not** get a fresh 12-month free tier — the always-free allowances (Lambda 1M
-req/mo, DynamoDB 25GB, CloudFront 1TB) are shared with Xenia. At the traffic
-in RESEARCH.md §D this is irrelevant: the allowances are three-plus orders of
-magnitude above expected load. A genuinely independent free tier would need a
-standalone account with its own payment method — not worth the admin.
+Nothing collides. Stacks are `PunchoutSandbox-*` against Xenia's `Xenia-*`;
+resources are `punchout-sandbox-*`. The account is already CDK-bootstrapped,
+so there is no bootstrap step.
+
+### The one thing co-tenancy actually costs
+
+Not naming — the **account-level Lambda concurrency pool**, which defaults to
+1000 and is shared by every function in the account. A public,
+unauthenticated tool getting hammered (BRIEF.md §3's explicit risk) could
+consume it and throttle Xenia's production handlers.
+
+`SiteStack` sets **`reserved_concurrent_executions=20`**. Reserved concurrency
+both guarantees those slots and caps the function at them, so the sandbox can
+never take more than 20 however hard it is pushed, leaving 980 for everything
+else. **If this file is ever refactored, check that setting first** — it is
+the single line that makes sharing the account safe.
+
+The trade-off is that a genuine spike gets throttled rather than scaling.
+For a free sandbox that is correct: throttling this is always better than
+throttling Xenia.
+
+### Blast radius: what is NOT isolated
+
+Being honest about what was given up. Sharing an account means shared IAM
+boundary, shared CloudTrail, shared service quotas beyond concurrency, and a
+compromise of this Lambda starts inside the same account as production. The
+mitigations are that its execution role grants access to its own DynamoDB
+table and nothing else, and that it holds no customer data — only synthetic
+documents about invented companies. That is a reasonable posture for what
+this is, and it would not be if the sandbox ever handled anything real.
 
 ### Architecture — all permanent free tier
 
