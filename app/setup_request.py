@@ -55,7 +55,7 @@ from typing import Optional
 
 from .http import Request, Response
 from .sessions import Session, store
-from .validation import validate
+from .validation import describe_findings, validate
 from .xml_safe import XmlRejected, parse
 
 
@@ -152,6 +152,8 @@ def handle_setup(request: Request, *, site_url: str) -> Response:
         f"buyerCookie={'present' if buyer_cookie else 'ABSENT — the spec requires it'}; "
         f"conformant={report.conformant}; "
         f"errors={len(report.errors)}; advisories={len(report.advisories)}"
+        + ("; " + "; ".join(describe_findings(report.errors))
+           if report.errors else "")
     )
 
     body = (

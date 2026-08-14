@@ -79,6 +79,24 @@ RESEARCH.md          market evidence behind that verdict
 HOSTING.md           hosting plan, naming, and the AWS account layout
 ```
 
+## For agents and scripts
+
+No browser needed at any point:
+
+```bash
+curl -sX POST https://punchoutsandbox.com/api/signup -d '{"email":"you@company.com"}'
+```
+
+Then `POST /api/validate` with `X-Sandbox-Identity` / `X-Sandbox-Secret`
+headers returns the full conformance report as JSON — every error with its
+line, element and hint. `POST /api/ingest` returns what each buyer platform
+would do to a cart. Worked, DTD-valid examples of every document are at
+[`/samples`](https://punchoutsandbox.com/samples).
+
+The punchout round trip is headless too: a live punchout session authorises
+the storefront on its own, because the shopper is the buyer's employee and the
+buyer's system already authenticated for them.
+
 ## Running locally
 
 ```bash

@@ -261,6 +261,7 @@ def validate(doc: SafeDocument, *, expected_type: Optional[str] = None) -> Confo
                     code="dtd-invalid",
                     message=_humanise_dtd_error(entry.message),
                     line=entry.line or None,
+                    element=_element_of_dtd_error(entry.message),
                     hint=_hint_for_dtd_error(entry.message),
                 )
             )
@@ -302,6 +303,23 @@ _ERROR_REWRITES: list[tuple[re.Pattern, str]] = [
         r"'\1' is not a permitted value for \3's '\2' attribute.",
     ),
 ]
+
+
+#: libxml2 phrases every structural complaint around a named element, in one
+#: of a small number of shapes. Pulling the name out turns "line 10" into
+#: "line 10, Address", which is the difference between a fix and a hunt —
+#: reported by an integrator who had to bisect their own document to find
+#: which element the DTD objected to.
+_DTD_ELEMENT = re.compile(
+    r"(?:Element\s+|No declaration for element\s+)([A-Za-z][\w.-]*)"
+    r"|^\s*<([A-Za-z][\w.-]*)>")
+
+
+def _element_of_dtd_error(message: str) -> Optional[str]:
+    match = _DTD_ELEMENT.search(message or "")
+    if not match:
+        return None
+    return match.group(1) or match.group(2)
 
 
 def _humanise_dtd_error(message: str) -> str:
@@ -537,3 +555,45 @@ _ADVISORY_CHECKS = (
     _check_total_arithmetic,
     _check_uom_variants,
 )
+
+
+def describe_findings(findings, *, limit: int = 8) -> list[str]:
+    """Turn validation findings into sentences fit for a cXML `Status` text.
+
+    =========================================================================
+    WHY A COUNT WAS NOT ENOUGH
+    =========================================================================
+    This endpoint used to report `errors=3` and then enumerate only the
+    advisories. A user integrating against it had to BISECT — send an empty
+    ShipTo, then a free-text one, then a structured one — to discover which
+    element the DTD objected to. That is exactly the work this service exists
+    to save, and it was withholding the answer it already had.
+
+    Errors come first because they are mechanical: the DTD says the document
+    is wrong and there is nothing to weigh up. `line` and `element` are
+    included when known, since "line 14, ShipTo" is the difference between a
+    fix and a hunt.
+
+    Capped, because a `Status` text lands in somebody's transaction log and a
+    single malformed document can produce hundreds of findings. The cap is
+    announced rather than silently applied — a truncated list that says it is
+    truncated is honest; one that does not is misleading.
+    """
+    out: list[str] = []
+    errors = [f for f in findings if f.severity == "error"]
+    for finding in errors[:limit]:
+        where = ""
+        if finding.line and finding.element:
+            where = f" [line {finding.line}, {finding.element}]"
+        elif finding.line:
+            where = f" [line {finding.line}]"
+        elif finding.element:
+            where = f" [{finding.element}]"
+        text = f"ERROR{where}: {finding.message}"
+        if finding.hint:
+            text += f" -> {finding.hint}"
+        out.append(text)
+    if len(errors) > limit:
+        out.append(f"({len(errors) - limit} further errors not listed here; "
+                   "the full report is at /validate)")
+    return out

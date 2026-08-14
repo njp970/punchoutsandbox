@@ -61,7 +61,8 @@ CF_API = "https://api.cloudflare.com/client/v4"
 ZONE_NAME = "punchoutsandbox.com"
 
 #: The paths a machine posts to. Everything else keeps Browser Integrity Check.
-MACHINE_PATHS = ["/punchout/setup", "/oci/setup", "/order"]
+MACHINE_PATHS = ["/punchout/setup", "/oci/setup", "/order",
+                 "/api/signup", "/api/validate", "/api/ingest"]
 
 
 
@@ -95,6 +96,12 @@ def main() -> int:
     zone_id = zones[0]["id"]
     print(f"zone    : {ZONE_NAME} ({zone_id})  plan={zones[0]['plan']['name']}")
 
+    # An integrator reported the same request answering 403 once and 429
+    # later. Two different refusals: 403 came from Cloudflare's Browser
+    # Integrity Check disliking their HTTP client, 429 was our own quota. Only
+    # one of those is ours to explain, so the machine paths are exempted from
+    # the first — including /api/*, whose entire audience is HTTP clients that
+    # BIC is designed to be suspicious of.
     expression = " or ".join(
         f'http.request.uri.path eq "{p}"' for p in MACHINE_PATHS)
 

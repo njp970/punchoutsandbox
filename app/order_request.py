@@ -40,7 +40,7 @@ from . import orders, telemetry
 from .cxml.order import observations, parse_order
 from .http import Request, Response
 from .orders import OrderRecord, new_ref
-from .validation import validate
+from .validation import describe_findings, validate
 from .xml_safe import XmlRejected, parse
 
 
@@ -118,6 +118,10 @@ def handle_order(request: Request, tenant, *, site_url: str) -> Response:
          f"conformant={report.conformant}",
          f"errors={len(report.errors)}",
          f"advisories={len(report.advisories)}"]
+        # The errors THEMSELVES, not just how many. Reporting a count and
+        # withholding the detail made people bisect their own document to
+        # find what we already knew.
+        + describe_findings(report.errors)
         + notes)
 
     body = (

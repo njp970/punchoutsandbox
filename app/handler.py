@@ -23,8 +23,8 @@ from decimal import Decimal as D
 from typing import Optional
 from urllib.parse import quote
 
-from . import (contact, delivery, differ, inspector, mailer, order_request,
-               orders, orderflow, platforms, reference, sessions,
+from . import (api, contact, delivery, differ, inspector, mailer, order_request,
+               orders, orderflow, platforms, reference, samples, sessions,
                setup_request, signup, storefront, telemetry, tenants)
 from .catalogue.data import BY_SKU, search
 from .catalogue.taxonomy import normalise_uom
@@ -226,6 +226,44 @@ def reference_page(request: Request) -> Response:
                        canonical=f"/reference/{slug}"))
 
 
+@router.get("/samples")
+def sample_index(request: Request) -> Response:
+    session, cart = get_session(request)
+    return html(render(
+        "samples.html", nav="samples", session=session, cart_count=len(cart),
+        canonical="/samples",
+        samples=[(key, name, blurb)
+                 for key, (name, blurb, _) in samples.SAMPLES.items()]))
+
+
+@router.get("/samples/{kind}")
+def sample_document(request: Request) -> Response:
+    """Served as XML so it opens in a browser and pipes into a file.
+
+    Generated per request rather than cached: they are cheap to build, and a
+    cached sample is one more thing that can be stale."""
+    body = samples.build(request.params.get("kind", ""))
+    if body is None:
+        return Response(status=404, body="No such sample. See /samples.",
+                        content_type="text/plain")
+    return Response(body=body, content_type="text/xml; charset=utf-8")
+
+
+@router.post("/api/signup")
+def api_signup(request: Request) -> Response:
+    return api.view_signup(request)
+
+
+@router.post("/api/validate")
+def api_validate(request: Request) -> Response:
+    return api.view_validate(request)
+
+
+@router.post("/api/ingest")
+def api_ingest(request: Request) -> Response:
+    return api.view_ingest(request)
+
+
 @router.get("/ingest")
 @router.post("/ingest")
 def ingest_preview(request: Request) -> Response:
@@ -339,7 +377,7 @@ def sitemap(request: Request) -> Response:
     which is the opposite of the point."""
     site = os.environ.get("SITE_URL", "https://punchoutsandbox.com")
     urls = ["/", "/docs", "/validate", "/ingest", "/reference",
-            "/signup", "/contact"]
+            "/samples", "/signup", "/contact"]
     urls += [f"/reference/{page.slug}" for page in reference.PAGES]
     entries = "".join(
         # `priority` is ignored by Google and has been for years; it is
@@ -933,7 +971,12 @@ def handler(event: dict, context=None) -> dict:
     # A signed-in visitor is metered by their account below instead, so the
     # anonymous counter only ever applies to someone with no account.
     if request.path == "/validate" and request.method == "POST":
-        if signup.current_tenant(request) is None:
+        # Credentials count as identity here, not just a browser cookie.
+        # Metering a client that holds valid issued credentials as an
+        # anonymous stranger is what made the cap look "keyed on address, not
+        # identity" — because it was.
+        if (signup.current_tenant(request) is None
+                and api.authenticate(request) is None):
             allowed, remaining = tenants.anon_check_quota(
                 tenants.client_ip(request.headers), today=signup.today())
             if not allowed:
@@ -973,6 +1016,36 @@ def handler(event: dict, context=None) -> dict:
     # possible. Opting a path OUT is a deliberate edit to signup.OPEN_PATHS.
     if not signup.is_open(request.path):
         tenant = signup.current_tenant(request)
+
+        # =================================================================
+        # A LIVE PUNCHOUT SESSION IS AUTHORISATION. THIS WAS A REAL OUTAGE.
+        # =================================================================
+        # The shopper who follows a StartPage URL is an employee of the BUYER.
+        # They have never seen this site and have no account here — their
+        # procurement system authenticated on their behalf, seconds earlier,
+        # with issued credentials. Demanding a signup from them put a form in
+        # the middle of somebody else's punchout: the product's actual flow,
+        # broken for every real end user.
+        #
+        # It survived a full QA pass because the QA client signs up first and
+        # therefore always carries an account cookie. No browser test that
+        # begins by signing up can ever see this.
+        #
+        # Storefront paths only. /orders and /settings stay account-scoped:
+        # they show data belonging to an account, and a punchout session is
+        # not one.
+        if tenant is None and signup.storefront_path(request.path):
+            punchout, _ = _cart_context(request)
+            if punchout is not None:
+                route = router.resolve(request)
+                if route is not None:
+                    response = route(request)
+                    pending = getattr(request, "_pending_cookies", None)
+                    if pending:
+                        response.cookies = list(response.cookies) + [
+                            c for c in pending if c not in response.cookies]
+                    return response.to_lambda()
+
         if tenant is None:
             # The machine endpoints authenticate with issued credentials
             # instead of a cookie — a buyer system cannot fill in a form.

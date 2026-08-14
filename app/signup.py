@@ -73,7 +73,18 @@ SITE_VERIFICATION = {
 
 OPEN_PATHS = ("/docs", "/signup", "/static/", "/favicon.ico", "/validate",
               "/contact", "/reference", "/robots.txt", "/sitemap.xml",
-              "/ingest", *SITE_VERIFICATION)
+              "/ingest", "/api/", "/samples", *SITE_VERIFICATION)
+
+
+#: The storefront. Reachable by anyone holding a LIVE PUNCHOUT SESSION even
+#: without an account, because the person browsing it is the buyer's employee
+#: and their procurement system already authenticated for them. Everything
+#: else stays account-scoped. See the gate in `handler.handler`.
+STOREFRONT_PATHS = ("/shop", "/product", "/cart")
+
+
+def storefront_path(path: str) -> bool:
+    return any(path == p or path.startswith(p + "/") for p in STOREFRONT_PATHS)
 
 
 def is_open(path: str) -> bool:
@@ -85,6 +96,15 @@ def is_open(path: str) -> bool:
 def current_tenant(request: Request) -> Optional[Tenant]:
     token = request.cookies.get("pst")
     return store().get(token) if token else None
+
+
+def create_tenant(email: str, company: str = ""):
+    """Mint an account. Shared by the HTML form and the JSON API, so the two
+    cannot drift into issuing subtly different accounts."""
+    tenant = Tenant(tenant_id=secrets.token_urlsafe(18),
+                    email=email.strip()[:200], company=company.strip()[:120])
+    store().put(tenant)
+    return tenant
 
 
 def view_signup(request: Request) -> Response:
@@ -109,9 +129,7 @@ def view_signup(request: Request) -> Response:
                            error="That does not look like an email address."),
                     status=400)
 
-    tenant = Tenant(tenant_id=secrets.token_urlsafe(18), email=email,
-                    company=company)
-    store().put(tenant)
+    tenant = create_tenant(email, company)
 
     return Response(
         status=200,
