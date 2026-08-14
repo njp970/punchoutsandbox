@@ -12,7 +12,8 @@ import base64
 import sys
 from urllib.parse import urlencode
 
-sys.path.insert(0, "/Users/neilparkes/punchout")
+import pathlib
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from app import contact, mailer, sessions, signup, tenants
 from app.handler import handler

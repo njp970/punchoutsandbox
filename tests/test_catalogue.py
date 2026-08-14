@@ -9,7 +9,8 @@ collapsed to 1:1.
 """
 import sys
 
-sys.path.insert(0, "/Users/neilparkes/punchout")
+import pathlib
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from app.catalogue.data import (
     BY_SKU, CATEGORIES, CATEGORY_BY_ID, CATEGORY_UNSPSC_SPREAD, PRODUCTS,

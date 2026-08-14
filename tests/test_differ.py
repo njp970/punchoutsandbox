@@ -7,7 +7,8 @@ regression reads as a sentence rather than a boolean.
 """
 import sys
 
-sys.path.insert(0, "/Users/neilparkes/punchout")
+import pathlib
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from app.differ import CORRUPTED, CRITICAL, DROPPED, diff
 from app.xml_safe import parse

@@ -79,6 +79,27 @@ HOSTING.md           hosting plan, naming, and the AWS account layout
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
+Then start the dev server — it uses in-memory stores, so no AWS credentials
+are needed:
+
+```bash
+.venv/bin/python -m app.handler
+```
+
+## Running the tests
+
+Each suite is a plain script that prints what it checked and why, and exits
+non-zero on failure. No test runner, no fixtures to learn.
+
+```bash
+for t in tests/test_*.py; do .venv/bin/python "$t" || break; done
+```
+
+They are worth reading as documentation. `test_orders.py` and
+`test_invoice.py` validate every generated document against the real cXML
+DTDs, which is the claim this whole project rests on;
+`test_dtd_licence.py` enforces the terms those DTDs ship under.
+
 ## Deploying
 
 ```bash

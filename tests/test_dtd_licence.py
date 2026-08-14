@@ -31,7 +31,8 @@ import pathlib
 import re
 import sys
 
-DTD_DIR = pathlib.Path("/Users/neilparkes/punchout/app/cxml/dtd")
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+DTD_DIR = ROOT / "app" / "cxml" / "dtd"
 
 #: As retrieved, 2026-08-14, cXML 1.2.071.
 EXPECTED = {
@@ -112,7 +113,7 @@ check("...and matches this suite",
       "two records of the same fact that disagree are worse than one")
 
 print("\n4. The repository declares its own licence separately")
-root = pathlib.Path("/Users/neilparkes/punchout")
+root = ROOT
 check("/LICENSE exists", (root / "LICENSE").exists(),
       "a public repo with no licence grants nobody anything")
 if (root / "LICENSE").exists():

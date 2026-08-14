@@ -14,7 +14,8 @@ import sys
 from decimal import Decimal as D
 from urllib.parse import urlencode
 
-sys.path.insert(0, "/Users/neilparkes/punchout")
+import pathlib
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from datetime import datetime, timezone
 

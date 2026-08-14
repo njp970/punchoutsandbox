@@ -15,7 +15,8 @@ import sys
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal as D
 
-sys.path.insert(0, "/Users/neilparkes/punchout")
+import pathlib
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from app.cxml.invoice import Invoice, InvoiceLine, Party, build_invoice
 from app.tax.engine import Rounding, TaxTreatment, TaxableLine, calculate
