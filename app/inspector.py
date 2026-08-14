@@ -23,6 +23,7 @@ from __future__ import annotations
 import html as _html
 
 from .http import Request, Response, html
+from .signup import current_tenant
 from .ui.render import render
 from .validation import validate
 from .xml_safe import XmlRejected, parse
@@ -76,12 +77,14 @@ def _numbered(document: str, error_lines: set[int]) -> list[dict]:
 def view_validate(request: Request) -> Response:
     if request.method == "GET":
         return html(render("validate.html", nav="validate", sample=_SAMPLE,
-                           document="", report=None, lines=None, rejected=None))
+                           document="", report=None, lines=None, rejected=None,
+                           signed_in=current_tenant(request) is not None))
 
     document = request.form().get("document", "").strip()
     if not document:
         return html(render("validate.html", nav="validate", sample=_SAMPLE,
                            document="", report=None, lines=None,
+                           signed_in=current_tenant(request) is not None,
                            rejected="Nothing to validate — paste a document first."))
 
     raw = document.encode("utf-8")
@@ -89,6 +92,7 @@ def view_validate(request: Request) -> Response:
         return html(render(
             "validate.html", nav="validate", sample=_SAMPLE, document="",
             report=None, lines=None,
+            signed_in=current_tenant(request) is not None,
             rejected=(f"That document is {len(raw):,} bytes; this page accepts "
                       f"up to {MAX_PASTE_BYTES:,}.")))
 
@@ -100,10 +104,12 @@ def view_validate(request: Request) -> Response:
         # processed, whereas a non-conformant one was parsed and then judged.
         return html(render(
             "validate.html", nav="validate", sample=_SAMPLE, document=document,
-            report=None, lines=None, rejected=str(exc)))
+            report=None, lines=None, rejected=str(exc),
+            signed_in=current_tenant(request) is not None))
 
     report = validate(doc)
     error_lines = {f.line for f in report.errors if f.line}
     return html(render(
         "validate.html", nav="validate", sample=_SAMPLE, document=document,
-        report=report, lines=_numbered(document, error_lines), rejected=None))
+        report=report, lines=_numbered(document, error_lines), rejected=None,
+        signed_in=current_tenant(request) is not None))

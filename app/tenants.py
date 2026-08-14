@@ -242,3 +242,87 @@ def verify_secret(presented: Optional[str], expected: str) -> bool:
     if not presented or not expected:
         return False
     return hmac.compare_digest(presented, expected)
+
+
+# =============================================================================
+# ANONYMOUS RATE LIMITING
+# =============================================================================
+# `/validate` is deliberately open — it is the most useful thing here to a
+# stranger, and a gate in front of it costs more in reach than it saves in
+# compute. But it is also the CPU-bound path (`lxml` against a 400KB DTD), so
+# "open" cannot mean "unlimited".
+#
+# The defence is layered, and worth naming because no single layer is
+# sufficient:
+#
+#   1. Reserved concurrency of 20 on the Lambda. This is the one that actually
+#      matters: whatever happens here, Xenia's production handlers cannot be
+#      starved. The worst case is that this sandbox is slow.
+#   2. Cloudflare rate limiting at the edge, on the free plan.
+#   3. This counter, per IP per day.
+#
+# The per-IP number is much lower than the per-account one, and that gap IS
+# the incentive to sign up — a soft prompt rather than a wall.
+ANON_DAILY_QUOTA = 25
+
+
+def anon_check_quota(ip: str, *, today: str) -> tuple[bool, int]:
+    """Count an anonymous operation against an IP for the day.
+
+    Returns `(allowed, remaining)`. Fails OPEN on any storage error: a
+    rate limiter that takes the service down when DynamoDB hiccups has
+    inverted its own purpose, and the reserved-concurrency cap means the
+    downside of briefly not counting is bounded anyway.
+
+    IPv6 is truncated to a /64. Handing out a fresh quota for every address in
+    a residential prefix would make the limit decorative."""
+    if not ip:
+        return True, ANON_DAILY_QUOTA
+    if ":" in ip:
+        ip = ":".join(ip.split(":")[:4]) + "::/64"
+
+    backing = store()
+    if isinstance(backing, MemoryTenants):
+        counters = getattr(backing, "_anon", None)
+        if counters is None:
+            counters = {}
+            backing._anon = counters
+        key = f"{ip}|{today}"
+        used = counters.get(key, 0)
+        if used >= ANON_DAILY_QUOTA:
+            return False, 0
+        counters[key] = used + 1
+        return True, ANON_DAILY_QUOTA - used - 1
+
+    try:
+        import boto3
+        table = boto3.resource("dynamodb").Table(os.environ["SANDBOX_TABLE"])
+        result = table.update_item(
+            Key={"pk": f"ANON#{ip}", "sk": today},
+            UpdateExpression="SET used = if_not_exists(used, :z) + :one, "
+                             "expires_at = :exp",
+            ExpressionAttributeValues={
+                ":z": 0, ":one": 1,
+                # Two days, so a counter written just before midnight still
+                # covers the day it belongs to.
+                ":exp": int(time.time()) + 2 * 24 * 3600,
+            },
+            ReturnValues="UPDATED_NEW",
+        )
+        used = int(result["Attributes"]["used"])
+        return used <= ANON_DAILY_QUOTA, max(0, ANON_DAILY_QUOTA - used)
+    except Exception:
+        return True, ANON_DAILY_QUOTA
+
+
+def client_ip(headers: dict) -> str:
+    """The visitor's IP, as Cloudflare reports it.
+
+    `cf-connecting-ip` is set by Cloudflare and — because the origin is only
+    reachable through Cloudflare (see `http.require_edge`) — cannot be forged
+    by a client. `x-forwarded-for` is the fallback and IS spoofable, so it is
+    only consulted when the Cloudflare header is absent, which in production
+    means never."""
+    return (headers.get("cf-connecting-ip")
+            or (headers.get("x-forwarded-for", "").split(",")[0].strip())
+            or "")

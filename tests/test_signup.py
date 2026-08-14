@@ -72,16 +72,23 @@ def signup_now(email="neil@example.com"):
 
 print("\n=== 1. Open paths stay open ===")
 fresh()
-for path in ("/docs", "/signup", "/static/app.css"):
+for path in ("/docs", "/signup", "/static/app.css", "/validate"):
     st, _, _ = go(path)
     check(f"{path} is reachable with no account", st == 200, f"status {st}")
 check("/docs specifically — you must be able to read what this is first",
       go("/docs")[0] == 200,
       "a gate in front of the explanation is a gate in front of the reason "
       "to sign up")
+st, body, _ = go("/validate")
+check("/validate is OPEN and actually usable anonymously",
+      st == 200 and "Sign up to continue" not in body,
+      "it is the most useful thing here to a stranger; a form in front of it "
+      "asks for an email at the moment a person is least willing to give one")
+check("and it invites signup rather than demanding it",
+      "no account needed" in body)
 
 print("\n=== 2. Gated paths are gated ===")
-for path in ("/shop", "/cart", "/validate", "/product/MSC-1001"):
+for path in ("/shop", "/cart", "/product/MSC-1001"):
     st, body, _ = go(path)
     check(f"{path} shows the gate", "Sign up to continue" in body, f"status {st}")
 check("the gate is a 200, not a 401 or a redirect", go("/shop")[0] == 200,
@@ -92,7 +99,7 @@ print("\n=== 3. Signing up opens them ===")
 token, sid, sec = signup_now()
 check("identity looks like an ANID", re.fullmatch(r"PSB\d{9}", sid) is not None, sid)
 check("secret is long enough to be one", len(sec) >= 20, f"{len(sec)} chars")
-for path in ("/shop", "/validate", "/cart"):
+for path in ("/shop", "/cart"):
     st, body, _ = go(path, cookies=[f"pst={token}"])
     check(f"{path} opens with the cookie",
           st == 200 and "Sign up to continue" not in body, f"status {st}")
@@ -165,6 +172,34 @@ store.put(t)
 st, body, _ = go("/shop", cookies=["pst=t2"])
 check("returns 429", st == 429, f"status {st}")
 check("and explains it is a number, not a policy", "not a policy" in body)
+
+print("\n=== 10. /validate is open but METERED ===")
+fresh()
+from app.tenants import ANON_DAILY_QUOTA, anon_check_quota
+allowed = sum(
+    1 for _ in range(ANON_DAILY_QUOTA + 5)
+    if anon_check_quota("203.0.113.9", today="2026-08-14")[0])
+check(f"exactly {ANON_DAILY_QUOTA} anonymous validations per IP per day",
+      allowed == ANON_DAILY_QUOTA, f"{allowed} allowed")
+check("a different IP has its own allowance",
+      anon_check_quota("203.0.113.10", today="2026-08-14")[0])
+check("the anonymous limit is well below the account limit",
+      ANON_DAILY_QUOTA < DAILY_QUOTA,
+      f"{ANON_DAILY_QUOTA} vs {DAILY_QUOTA} — that gap IS the incentive to "
+      "sign up, a prompt rather than a wall")
+check("IPv6 is truncated to a /64",
+      anon_check_quota("2001:db8:1:2:3:4:5:6", today="2026-08-14")[0],
+      "a fresh quota per address in a residential prefix would make the "
+      "limit decorative")
+
+print("\n=== 11. A signed-in visitor is NOT metered anonymously ===")
+fresh()
+token, _, _ = signup_now("metered@example.com")
+st, body, _ = go("/validate", "POST",
+                 urlencode({"document": "<not-cxml/>"}).encode(),
+                 cookies=[f"pst={token}"])
+check("signed-in validation works", st == 200, f"status {st}")
+check("and the signup prompt is gone", "no account needed" not in body)
 
 tenants.reset_store(None)
 sessions.reset_store(None)

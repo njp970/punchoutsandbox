@@ -14,16 +14,26 @@ Open, always:
                front of the reason to sign up.
   /signup      obviously
   /static/*    stylesheet
+  /validate    see below
 
 Gated:
 
-  the storefront, cart, /validate, and the machine endpoints.
+  the storefront, the cart, and the machine endpoints.
 
-`/validate` is the debatable one. It is the single most useful thing here for
-a stranger, and gating it costs some goodwill. It is gated anyway because it
-is the CPU-bound path — `lxml` against a 400KB DTD — and therefore the actual
-abuse surface. An ungated validator is a free CPU cycle generator with a nice
-UI.
+**`/validate` was gated and is now open**, and the reasoning is worth keeping
+because it reversed. It is the CPU-bound path — `lxml` against a 400KB DTD —
+so it is genuinely the abuse surface, and that argued for a gate.
+
+It argued wrongly. `/validate` is also the single most useful thing here to a
+stranger: someone whose document is being rejected and who cannot find out
+why. Putting a form in front of that is asking for an email at the exact
+moment a person is least willing to give one, and it makes the tool useless
+for the drive-by case that is most of its value.
+
+So it is open, and the compute is protected by three layers instead —
+reserved Lambda concurrency, Cloudflare rate limiting, and a per-IP daily
+counter much smaller than the per-account one (`tenants.ANON_DAILY_QUOTA`).
+That gap is the incentive to sign up: a prompt, not a wall.
 """
 from __future__ import annotations
 
@@ -36,7 +46,7 @@ from .tenants import Tenant, store, valid_email
 from .ui.render import render
 
 #: Paths reachable with no account. Prefix match; see `is_open`.
-OPEN_PATHS = ("/docs", "/signup", "/static/", "/favicon.ico")
+OPEN_PATHS = ("/docs", "/signup", "/static/", "/favicon.ico", "/validate")
 
 
 def is_open(path: str) -> bool:

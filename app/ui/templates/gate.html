@@ -3,11 +3,20 @@
 {% block content %}
 
 <div style="max-width:52ch">
+  {% if rate_limited %}
+  <h1>Daily limit reached</h1>
+  <p class="muted" style="margin-top:-4px">
+    You have used today's free validations from this address. Validating
+    against a 400KB DTD costs real CPU, so anonymous use is capped &mdash;
+    an account raises the limit substantially and takes one field.
+  </p>
+  {% else %}
   <h1>Sign up to continue</h1>
   <p class="muted" style="margin-top:-4px">
     <code>{{ wanted }}</code> needs an account. It takes one field and about
     four seconds &mdash; no password, no card, no confirmation email.
   </p>
+  {% endif %}
 
   <div class="card">
     <form method="post" action="/signup">
@@ -23,8 +32,15 @@
   </div>
 
   <p class="small muted">
-    Still deciding? <a href="/docs">The docs are open</a> &mdash; you should be
-    able to read what this is before handing over an email address.
+    {% if rate_limited %}
+    The limit resets at midnight UTC. If you are hitting it legitimately, say
+    so &mdash; it is a number, not a policy.
+    {% else %}
+    Still deciding? <a href="/docs">The docs</a> and
+    <a href="/validate">the validator</a> are open &mdash; you should be able
+    to read what this is, and try the useful part, before handing over an
+    email address.
+    {% endif %}
   </p>
 </div>
 

@@ -7,8 +7,10 @@
   A hosted virtual supplier speaking <strong>cXML</strong> and
   <strong>OCI</strong>. Point your buyer-side punchout client at it, shop,
   and get a real cart back &mdash; cXML validated against the actual DTDs on
-  the way through. Free &mdash; <a href="/signup">one email gets you
-  credentials</a>, and nothing you send is stored beyond an hour.
+  the way through. <a href="/validate">The validator is open to everyone</a>;
+  running a punchout round trip needs
+  <a href="/signup">one email for credentials</a>. Nothing you send is stored
+  beyond an hour.
 </p>
 
 <div class="card">
@@ -334,9 +336,9 @@ XML</code></pre>
   <div class="table-wrap">
     <table>
       <tr><th>Sessions</th><td>Expire after 1 hour. Nothing is kept.</td></tr>
-      <tr><th>Daily limit</th><td>500 validations or punchout sessions per
-          account. If you hit that legitimately, say so &mdash; it is a
-          number, not a policy.</td></tr>
+      <tr><th>Daily limit</th><td>25 validations without an account, 500 with
+          one. If you hit either legitimately, say so &mdash; it is a number,
+          not a policy.</td></tr>
       <tr><th>Credentials</th><td>Not enforced. Anything is accepted and echoed back.</td></tr>
       <tr><th>OCI functions</th>
           <td><code>DETAIL</code>, <code>VALIDATE</code> and

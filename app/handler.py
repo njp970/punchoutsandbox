@@ -474,6 +474,19 @@ def handler(event: dict, context=None) -> dict:
     if refusal is not None:
         return refusal.to_lambda()
 
+    # /validate is open but NOT unlimited — see signup.py on why it was
+    # un-gated, and tenants.py on the three layers that replaced the gate.
+    # A signed-in visitor is metered by their account below instead, so the
+    # anonymous counter only ever applies to someone with no account.
+    if request.path == "/validate" and request.method == "POST":
+        if signup.current_tenant(request) is None:
+            allowed, remaining = tenants.anon_check_quota(
+                tenants.client_ip(request.headers), today=signup.today())
+            if not allowed:
+                return html(render(
+                    "gate.html", nav="signup", wanted="/validate",
+                    rate_limited=True), status=429).to_lambda()
+
     # THE GATE. Applied here rather than per-route on purpose: a new route
     # added later is gated by default, and forgetting to gate it is not
     # possible. Opting a path OUT is a deliberate edit to signup.OPEN_PATHS.

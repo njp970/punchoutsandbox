@@ -127,6 +127,22 @@
 </div>
 {% endif %}
 
+{% if not signed_in %}
+{# A prompt, deliberately BELOW the tool and after the result. Someone whose
+   document is being rejected is at their least patient; asking for an email
+   before they get their answer would make this useless for the drive-by case
+   that is most of its value. #}
+<div class="banner banner-info" style="margin-top:16px">
+  <span aria-hidden="true">&#9432;</span>
+  <div>
+    This validator is free and open &mdash; no account needed.
+    <a href="/signup">Signing up</a> raises the daily limit and unlocks the
+    storefront, so you can run a full punchout round trip against a real
+    supplier rather than just checking one document.
+  </div>
+</div>
+{% endif %}
+
 <div class="card" style="margin-top:16px">
   <div class="card-header"><h2 class="card-title">Paste a document</h2></div>
   <form method="post" action="/validate">
