@@ -7,26 +7,41 @@ you should, because a Function URL hostname changes if the function is ever
 replaced rather than updated.
 
 =============================================================================
-CREDENTIALS — READ THIS BEFORE YOU EDIT ANYTHING
+CREDENTIALS — TWO AUTH MODES, READ THIS BEFORE YOU EDIT ANYTHING
 =============================================================================
-This script reads the SAME two environment variables Xenia's
-`infra/scripts/deploy_support_email_worker.py` reads, by design:
+Cloudflare has two authentication schemes and this script accepts either,
+because the account already has both. Everything is read from the ENVIRONMENT
+and never from this file. Xenia keeps its values in `infra/.env` (gitignored);
+do the same here — `.gitignore` already covers `infra/.env`.
 
-  CLOUDFLARE_API_TOKEN     needs, for this script: Zone > DNS > Edit AND
+**Mode 1 — scoped API token (preferred).**
+
+  CLOUDFLARE_API_TOKEN     sent as `Authorization: Bearer <token>`.
+                           For THIS script it needs Zone > DNS > Edit AND
                            Zone > Zone Settings > Edit (the transform rule).
-                           Xenia's Worker token has Account > Workers Scripts
-                           > Edit, which this script does NOT need and which
-                           does NOT grant DNS — so if you reuse that token
-                           verbatim, expect a 403 on the DNS step until the
-                           two zone scopes above are added to it.
-  CLOUDFLARE_ACCOUNT_ID    same value; one Cloudflare account holds both zones.
+                           Xenia's Worker token carries Account > Workers
+                           Scripts > Edit, which this script does not need and
+                           which does NOT grant DNS — reuse it verbatim and
+                           you get a 403 on the DNS step.
 
-They are read from the ENVIRONMENT and never from this file. Xenia keeps them
-in `infra/.env` (gitignored); do the same here — `.gitignore` already covers
-`infra/.env`. Reusing one token across two products is a deliberate, ordinary
-trade-off (one thing to rotate, one blast radius); if you would rather they be
-independent, mint a second token scoped to this zone only and nothing in this
-script changes.
+**Mode 2 — legacy Global API Key.**
+
+  CLOUDFLARE_EMAIL         the account email
+  CLOUDFLARE_API_KEY       the Global API Key
+
+  Sent as the `X-Auth-Email` / `X-Auth-Key` header pair. Same API host and
+  same paths — only the headers differ, despite the "different endpoint"
+  folklore.
+
+  ⚠️ **The Global API Key is not scoped.** It grants full control of every
+  zone and every setting on the account, it cannot be restricted, and it is
+  the credential an attacker most wants. It works, and it is the faster path
+  today, but a token scoped to this one zone is strictly better: it can be
+  rotated without touching anything else, and a leak costs you one zone rather
+  than the account. Treat Mode 2 as the expedient option, not the destination.
+
+`CLOUDFLARE_ACCOUNT_ID` is not required by this script — every call here is
+zone-scoped and the zone is resolved by name.
 
 `EDGE_SHARED_SECRET` is generated here if you do not supply one, written to
 BOTH sides of the boundary (the Cloudflare transform rule and the Lambda's
@@ -59,6 +74,34 @@ CF_API = "https://api.cloudflare.com/client/v4"
 ZONE_NAME = "punchoutsandbox.com"
 RULESET_PHASE = "http_request_late_transform"
 HEADER_NAME = "X-Edge-Secret"
+
+
+def _auth_headers() -> tuple[dict[str, str], str]:
+    """Build Cloudflare auth headers from whichever credentials are present.
+
+    Returns `(headers, description)`. The description is printed so the
+    operator can see which mode was used — silently picking one of two
+    credentials is how you end up debugging a 403 against the wrong key."""
+    token = os.environ.get("CLOUDFLARE_API_TOKEN")
+    if token:
+        return {"Authorization": f"Bearer {token}"}, "scoped API token"
+
+    email = os.environ.get("CLOUDFLARE_EMAIL")
+    key = os.environ.get("CLOUDFLARE_API_KEY")
+    if email and key:
+        return (
+            {"X-Auth-Email": email, "X-Auth-Key": key},
+            f"legacy Global API Key ({email})",
+        )
+
+    raise SystemExit(
+        "No Cloudflare credentials found. Set EITHER:\n"
+        "  CLOUDFLARE_API_TOKEN                     (scoped token, preferred)\n"
+        "or\n"
+        "  CLOUDFLARE_EMAIL + CLOUDFLARE_API_KEY    (legacy Global API Key)\n\n"
+        "Source them from a gitignored infra/.env, as Xenia does — do not "
+        "paste them into this file."
+    )
 
 
 def _cf(session: requests.Session, method: str, path: str, **kw) -> dict:
@@ -103,13 +146,8 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    try:
-        token = os.environ["CLOUDFLARE_API_TOKEN"]
-    except KeyError:
-        raise SystemExit(
-            "CLOUDFLARE_API_TOKEN is not set. Source it from a gitignored "
-            "infra/.env, as Xenia does — do not paste it into this file."
-        )
+    headers, auth_mode = _auth_headers()
+    print(f"auth    : {auth_mode}")
 
     edge_secret = os.environ.get("EDGE_SHARED_SECRET") or secrets.token_urlsafe(32)
 
@@ -120,7 +158,7 @@ def main() -> int:
     print(f"origin  : {origin_host}")
 
     session = requests.Session()
-    session.headers["Authorization"] = f"Bearer {token}"
+    session.headers.update(headers)
 
     zones = _cf(session, "GET", "/zones", params={"name": ZONE_NAME})["result"]
     if not zones:

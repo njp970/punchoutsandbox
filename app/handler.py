@@ -2,14 +2,15 @@
 
 `CMD ["app.handler.handler"]` in the Dockerfile points here.
 
-Session state lives in memory for now (`_SESSIONS`), which is correct for a
-single-container dev run and WRONG for Lambda, where every cold start gets a
-fresh dict and concurrent invocations do not share one. The DynamoDB table is
-already provisioned in `infra/sandbox/data_stack.py` and `_SESSIONS` is
-deliberately isolated behind `get_session`/`save_session` so swapping the
-backing store is a two-function change rather than a hunt. Until that swap
-happens, a punchout session will appear to vanish whenever Lambda scales —
-which is a real bug, not a shortcut, and it is recorded as one.
+Session state lives in DynamoDB — see `app/sessions.py` for why, and for the
+in-memory backend that makes local development possible without credentials.
+
+Every route that touches a session follows the same shape: read it, mutate it,
+**write it back**. That last step is easy to forget and impossible to notice
+locally, because `MemoryStore` hands back the same object every time so
+mutations appear to persist by themselves. Against DynamoDB they silently do
+not. `_with_session` exists to make the write-back structural rather than
+something each handler has to remember.
 
 Running locally:  python -m app.handler
 """
@@ -17,18 +18,18 @@ from __future__ import annotations
 
 import os
 import secrets
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal as D
 from typing import Optional
 
-from . import storefront
+from . import sessions, storefront
 from .catalogue.data import BY_SKU
 from .catalogue.taxonomy import normalise_uom
 from .cxml.punchout import (CartItem, build_cancel, build_empty_cart,
                             build_punchout_order_message, render_return_form)
 from .http import (MethodNotAllowed, Request, Response, Router, html,
                    parse_event, redirect, require_edge)
+from .sessions import Session
 
 
 def _cart_item(sku: str, quantity: int) -> CartItem:
@@ -60,43 +61,50 @@ def _cart_item(sku: str, quantity: int) -> CartItem:
 router = Router()
 
 
-@dataclass
-class Session:
-    """A punchout session. `buyer_cookie` is the capability that binds a cart
-    return to the requisition that started it."""
-
-    session_id: str
-    buyer_name: str = "your procurement system"
-    protocol: str = "cXML"
-    buyer_cookie: str = ""
-    return_url: str = ""
-    operation: str = "create"
-    cart: dict[str, int] = field(default_factory=dict)
-
-    @property
-    def return_url_display(self) -> str:
-        return self.return_url or "(not set)"
-
-
-_SESSIONS: dict[str, Session] = {}
 #: Browsing without a punchout handshake still needs somewhere to put a cart.
-_ANONYMOUS = Session(session_id="anonymous", buyer_name="")
+#: Anonymous carts are per-container and disposable ON PURPOSE — there is
+#: nowhere to return them to, so persisting them would cost storage for no
+#: benefit. Only real punchout sessions are worth a write.
+_ANONYMOUS_CART: dict[str, int] = {}
+
+
+def _token(request: Request) -> Optional[str]:
+    return request.cookies.get("pos") or request.query.get("session")
 
 
 def get_session(request: Request) -> tuple[Optional[Session], dict[str, int]]:
     """Resolve the punchout session, if any, plus the cart to operate on.
 
     Returns `(session, cart)` where `session` is None for anonymous browsing —
-    the templates key their punchout chrome off exactly that."""
-    token = request.cookies.get("pos") or request.query.get("session")
-    if token and token in _SESSIONS:
-        found = _SESSIONS[token]
-        return found, found.cart
-    return None, _ANONYMOUS.cart
+    the templates key their punchout chrome off exactly that. An expired or
+    unknown token resolves to anonymous rather than raising: a user whose
+    session timed out mid-shop should see the shop, not a stack trace."""
+    token = _token(request)
+    if token:
+        found = sessions.store().get(token)
+        if found is not None:
+            return found, found.cart
+    return None, _ANONYMOUS_CART
 
 
 def save_session(session: Session) -> None:
-    _SESSIONS[session.session_id] = session
+    sessions.store().put(session)
+
+
+def _with_session(request: Request, mutate) -> Response:
+    """Run `mutate(cart)` and persist the result if it belongs to a session.
+
+    This exists because forgetting the write-back is invisible locally —
+    `MemoryStore` returns the same object each time, so a mutation appears to
+    stick on its own. Against DynamoDB it does not, and the bug looks exactly
+    like the one this module was rewritten to fix. Making the write structural
+    means no handler has to remember it."""
+    session, cart = get_session(request)
+    response = mutate(cart)
+    if session is not None:
+        session.cart = cart
+        save_session(session)
+    return response
 
 
 # --------------------------------------------------------------------------- #
@@ -128,14 +136,14 @@ def cart(request: Request) -> Response:
 
 @router.post("/cart/add")
 def cart_add(request: Request) -> Response:
-    _, cart_state = get_session(request)
-    return storefront.add_to_cart(request, cart=cart_state)
+    return _with_session(
+        request, lambda cart: storefront.add_to_cart(request, cart=cart))
 
 
 @router.post("/cart/remove")
 def cart_remove(request: Request) -> Response:
-    _, cart_state = get_session(request)
-    return storefront.remove_from_cart(request, cart=cart_state)
+    return _with_session(
+        request, lambda cart: storefront.remove_from_cart(request, cart=cart))
 
 
 @router.post("/cart/return")
@@ -177,10 +185,12 @@ def cart_return(request: Request) -> Response:
             **common,
         )
 
-    # The cart is single-use. Clearing it here means a browser back-button
-    # resubmit cannot double the buyer's requisition — the documented
-    # double-submit failure mode.
+    # Single-use: clearing AND PERSISTING means a back-button resubmit
+    # cannot double the buyer's requisition. Clearing the local dict alone
+    # would leave the cleared state unwritten and the cart replayable.
     cart_state.clear()
+    session.cart = {}
+    save_session(session)
     return html(render_return_form(
         document, browser_form_post_url=session.return_url, encoding=encoding))
 
