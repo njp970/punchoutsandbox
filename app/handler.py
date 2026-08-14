@@ -27,6 +27,7 @@ from .catalogue.data import BY_SKU
 from .catalogue.taxonomy import normalise_uom
 from .cxml.punchout import (CartItem, build_cancel, build_empty_cart,
                             build_punchout_order_message, render_return_form)
+from .oci import inbound as oci_in, outbound as oci_out
 from .http import (MethodNotAllowed, Request, Response, Router, html,
                    parse_event, redirect, require_edge)
 from .sessions import Session
@@ -166,6 +167,20 @@ def cart_return(request: Request) -> Response:
     form = request.form()
     mode = form.get("mode", "cart")
     encoding = form.get("encoding", "cxml-base64")
+
+    if session.protocol == "OCI":
+        # OCI has no cancel document and no status codes at all, so "empty"
+        # and "cancel" collapse to the same thing: a form with no NEW_ITEM
+        # fields. That is a real expressiveness gap, not an omission here.
+        items = ([] if mode in ("empty", "cancel")
+                 else [_oci_item(sku, qty) for sku, qty in cart_state.items()
+                       if sku in BY_SKU])
+        fields, advisories = oci_out.build_fields(items)
+        page = oci_out.render_return_form(fields, hook_url=session.return_url)
+        cart_state.clear()
+        session.cart = {}
+        save_session(session)
+        return html(page)
     common = dict(
         buyer_cookie=session.buyer_cookie,
         payload_id=f"{secrets.token_hex(8)}@punchoutsandbox.com",
@@ -202,6 +217,72 @@ def validate_document(request: Request) -> Response:
     """The product's front door — and the only route that exercises `lxml`
     and the vendored DTDs, so it is also the deployment's liveness proof."""
     return inspector.view_validate(request)
+
+
+def _oci_item(sku: str, quantity: int) -> "oci_out.OciItem":
+    """Catalogue product -> OCI cart line.
+
+    Note what has to change versus the cXML path. The unit is an ISO code
+    capped at 3 characters, the description is capped at 40 and the full text
+    moves to LONGTEXT, and PRICEUNIT is emitted explicitly. None of those
+    limits exist in cXML, which is why one cart model cannot serve both
+    protocols unchanged."""
+    product = BY_SKU[sku]
+    uom, _ = normalise_uom(product.uom)
+    return oci_out.OciItem(
+        description=product.name,
+        quantity=D(quantity),
+        unit=uom[:3],
+        price=product.price_for(quantity),
+        currency=product.currency,
+        # The catalogue's pack_size IS an OCI price unit: a box of 100 priced
+        # per box is PRICE=<box price>, PRICEUNIT=1 for the box as a unit —
+        # but where a price is quoted per pack of N, PRICEUNIT carries N.
+        price_unit=1,
+        vendor_mat=product.sku,
+        manufacturer_code=product.manufacturer[:10],
+        manufacturer_mat=product.manufacturer_part_id,
+        lead_time_days=product.lead_time_days,
+        long_text=product.description,
+        ext_product_id=product.sku,
+        ext_category_id=product.unspsc,
+        ext_schema_type="UNSPSC",
+    )
+
+
+@router.get("/oci/setup")
+@router.post("/oci/setup")
+def oci_setup(request: Request) -> Response:
+    """OCI call-up. Unlike cXML there is no handshake — the user's browser
+    just arrives, so this responds with the storefront rather than a document.
+
+    Accepts GET and POST because SRM Customizing decides which, and SAP's own
+    example checks both."""
+    callup = oci_in.parse_callup(
+        query=request.query, form=request.form() if request.method == "POST" else {},
+        method=request.method)
+
+    if not callup.hook_url:
+        return html(
+            "<h1>No HOOK_URL</h1><p>OCI has no other session mechanism, so "
+            "there is nowhere to return a cart to. Your SRM configuration "
+            "should send HOOK_URL as the return-URL parameter.</p>"
+            '<p><a href="/docs">How to configure this</a></p>', status=400)
+
+    session = Session(
+        session_id=secrets.token_urlsafe(18),
+        buyer_name=callup.username or "your SAP system",
+        protocol="OCI",
+        buyer_cookie="",          # OCI has no equivalent; HOOK_URL is the session
+        return_url=callup.hook_url,
+        operation="create",
+    )
+    save_session(session)
+    return Response(
+        status=303, body="",
+        headers={"location": f"/shop?session={session.session_id}"},
+        cookies=[f"pos={session.session_id}; Path=/; HttpOnly; SameSite=Lax"],
+    )
 
 
 @router.post("/punchout/setup")

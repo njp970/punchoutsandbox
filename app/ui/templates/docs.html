@@ -4,9 +4,10 @@
 
 <h1>How to use this</h1>
 <p class="muted" style="margin-top:-4px;max-width:64ch">
-  A hosted virtual supplier. Point your buyer-side punchout client at it,
-  shop, and get a real cXML cart back &mdash; validated against the actual
-  cXML DTDs on the way through. Free, no signup, nothing stored beyond an hour.
+  A hosted virtual supplier speaking <strong>cXML</strong> and
+  <strong>OCI</strong>. Point your buyer-side punchout client at it, shop,
+  and get a real cart back &mdash; cXML validated against the actual DTDs on
+  the way through. Free, no signup, nothing stored beyond an hour.
 </p>
 
 <div class="card">
@@ -173,7 +174,76 @@ XML</code></pre>
 </div>
 
 <div class="card">
-  <div class="card-header"><h2 class="card-title">6. Validate any document</h2></div>
+  <div class="card-header"><h2 class="card-title">6. Using OCI instead of cXML</h2></div>
+  <p class="card-note">
+    SAP SRM, ECC and S/4HANA speak OCI, not cXML. There is
+    <strong>no handshake</strong> &mdash; point your external web service
+    straight at this URL and the user's browser arrives with the return
+    address attached.
+  </p>
+  <div class="copyfield">
+    <code>{{ site_url }}/oci/setup</code>
+    <button type="button" onclick="navigator.clipboard.writeText('{{ site_url }}/oci/setup')">Copy</button>
+  </div>
+  <div class="table-wrap" style="margin-top:14px">
+    <table>
+      <tr><th>Required</th>
+          <td><code>HOOK_URL</code> &mdash; the return address. OCI has no
+              other session mechanism, so this <em>is</em> the session.</td></tr>
+      <tr><th>Optional</th>
+          <td><code>OCI_VERSION</code>, <code>returntarget</code>,
+              <code>http_content_charset</code>, <code>USERNAME</code></td></tr>
+      <tr><th>Method</th><td>GET or POST &mdash; both work</td></tr>
+    </table>
+  </div>
+  <p class="card-note" style="margin-top:12px">
+    In SRM: <em>Define External Web Services</em>, with row 1 as the URL above
+    and a second row naming the return-URL parameter <code>HOOK_URL</code>.
+  </p>
+  <div class="finding finding-advisory" style="margin-top:12px">
+    <div class="finding-top"><span class="pill pill-warn">why this matters more for OCI</span></div>
+    <div class="finding-msg">
+      <strong>OCI has no status mechanism at all.</strong> cXML can answer
+      <code>&lt;Status code="406"&gt;</code>; OCI can say nothing. If SRM
+      dislikes a line it drops it and shows &ldquo;Incomplete items in
+      catalog&rdquo;, with the detail buried in transaction
+      <code>SLG1</code> under log object <code>BBP_OCI</code>. A buyer
+      integration can be losing lines on every cart and never see an error.
+    </div>
+    <div class="finding-hint">
+      So this sandbox reports every truncation and normalisation it performs,
+      because SAP will not.
+    </div>
+  </div>
+  <div class="table-wrap" style="margin-top:14px">
+    <table>
+      <thead><tr><th>OCI trap</th><th>What happens</th></tr></thead>
+      <tbody>
+        <tr><td><code>DESCRIPTION</code> is 40 chars</td>
+            <td>The tightest limit of any platform. Silently truncated;
+                <code>LONGTEXT</code> is the escape hatch.</td></tr>
+        <tr><td><code>UNIT</code> is 3 chars, ISO only</td>
+            <td><code>EACH</code> becomes <code>EAC</code>. SAP's internal
+                <code>ST</code> means <em>sheet</em> in ISO, not
+                <em>Stück</em>.</td></tr>
+        <tr><td><code>PRICEUNIT</code> is a divisor</td>
+            <td><code>PRICE=50, PRICEUNIT=5</code> means 10.00 each. Ignore it
+                and you book a 5&times; overcharge. No cXML equivalent.</td></tr>
+        <tr><td><code>HOOK_URL</code> must be <em>split</em></td>
+            <td>Its query parameters become hidden form fields; the action is
+                the bare URL. POST the whole thing and SRM loses
+                parameters.</td></tr>
+        <tr><td>Indices start at <strong>1</strong></td>
+            <td>A zero-based cart is ignored or truncated at the gap.</td></tr>
+        <tr><td>Default charset is ISO-8859-1</td>
+            <td>Not UTF-8 &mdash; the reverse of cXML.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2 class="card-title">7. Validate any document</h2></div>
   <p class="card-note">
     <a href="/validate">/validate</a> takes any cXML document and checks it
     against the real DTDs. It separates <strong>errors</strong> (the DTD says
@@ -189,7 +259,10 @@ XML</code></pre>
     <table>
       <tr><th>Sessions</th><td>Expire after 1 hour. Nothing is kept.</td></tr>
       <tr><th>Credentials</th><td>Not enforced. Anything is accepted and echoed back.</td></tr>
-      <tr><th>OCI</th><td>Not yet supported &mdash; cXML only.</td></tr>
+      <tr><th>OCI functions</th>
+          <td><code>DETAIL</code>, <code>VALIDATE</code> and
+              <code>BACKGROUND_SEARCH</code> are parsed and reported but not
+              yet answered.</td></tr>
       <tr><th>Companies</th>
           <td>Every supplier, brand and document here is invented. Generated
               documents are test artifacts and must not be used as anything
