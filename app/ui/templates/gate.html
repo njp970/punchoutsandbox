@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Sign up to continue — PunchOut Sandbox{% endblock %}
 {% block content %}
+{#
+  A structural marker for tests. Detecting the gate by searching for the words
+  "Sign up to continue" broke the moment the docs page QUOTED those words while
+  documenting what the gate means — the second time this session a substring of
+  ordinary English has been used as a test handle and collided with prose.
+#}
+<div data-gate="1"></div>
 
 <div style="max-width:52ch">
   {% if rate_limited %}

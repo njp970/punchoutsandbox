@@ -106,6 +106,42 @@
       204 silently wipes the buyer&rsquo;s requisition.
     </div>
   </div>
+
+  <h3 style="margin-top:24px">What the status codes mean</h3>
+  <p class="card-note">
+    Sessions last an hour. These are the states you will actually meet while
+    testing, and what each one is telling you.
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>You get</th><th>It means</th></tr></thead>
+      <tbody>
+        <tr><td><code>410 Gone</code><br>&ldquo;That punchout session has ended&rdquo;</td>
+            <td>The session expired, or that cart was already returned.
+                <strong>Not a failure of the sandbox</strong> &mdash; start a
+                new punchout from your buyer system. You do not need an
+                account to be shown this.</td></tr>
+        <tr><td><code>409</code><br>&ldquo;No punchout session&rdquo;</td>
+            <td>You are signed in but have no live session: the
+                <code>StartPage</code> URL was never followed, or the cart is
+                already back.</td></tr>
+        <tr><td><code>200</code><br>&ldquo;Sign up to continue&rdquo;</td>
+            <td>No session <em>and</em> no account cookie. Your cookie jar is
+                empty &mdash; check the <code>StartPage</code> <code>GET</code>
+                actually stored one.</td></tr>
+        <tr><td>cXML <code>Status code="401"</code></td>
+            <td>Credentials not recognised. <strong>The HTTP status is still
+                200</strong> &mdash; read the cXML, not the response code. A
+                client checking only for HTTP 200 will never see this.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="card-note">
+    Two habits worth having: <strong>start each test run with a clean cookie
+    jar</strong>, and remember a <strong>returned cart is single-use</strong> —
+    returning it clears it, so a back-button resubmit cannot double your
+    requisition. To test a second return, start a second punchout.
+  </p>
 </div>
 
 <div class="card">

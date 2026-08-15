@@ -166,7 +166,7 @@ session_id = start.split("session=")[1]
 
 status, page = client("/shop", query={"session": session_id})
 check("the StartPage URL opens the catalogue", status == 200
-      and "Sign up to continue" not in page,
+      and 'data-gate="1"' not in page,
       "the shopper is the BUYER's employee — they have no account here, and "
       "their procurement system authenticated for them seconds ago")
 check("...showing the punchout banner", "Punchout session active" in page)
@@ -202,13 +202,13 @@ check("...carrying the line", sku[0] in payload)
 
 status, page = client("/orders")
 check("but /orders is still account-scoped",
-      "Sign up to continue" in page,
+      'data-gate="1"' in page,
       "a punchout session authorises the storefront, not somebody's order data")
 
 print("\n5. Every document has a worked, valid sample")
 client = fresh()
 status, page = client("/samples")
-check("/samples is open", status == 200 and "Sign up to continue" not in page)
+check("/samples is open", status == 200 and 'data-gate="1"' not in page)
 for sample in samples.CANONICAL:
     status, body = client(f"/samples/{sample.key}")
     check(f"{sample.key} serves", status == 200 and body.startswith("<?xml"),

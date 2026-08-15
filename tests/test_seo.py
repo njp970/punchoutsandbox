@@ -50,7 +50,10 @@ def get(path, query=None):
 sessions.reset_store(MemoryStore())
 tenants.reset_store(MemoryTenants())
 
-GATE = "Sign up to continue"
+#: The gate is identified by a marker element, not by its prose — the
+#: docs page legitimately quotes its wording while explaining what it
+#: means, and a substring check cannot tell those apart.
+GATE = 'data-gate="1"'
 
 print("\n1. The front door is a page, not a redirect into the gate")
 status, body, headers = get("/")

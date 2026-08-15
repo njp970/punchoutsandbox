@@ -84,7 +84,7 @@ check("/docs specifically — you must be able to read what this is first",
       "to sign up")
 st, body, _ = go("/validate")
 check("/validate is OPEN and actually usable anonymously",
-      st == 200 and "Sign up to continue" not in body,
+      st == 200 and 'data-gate="1"' not in body,
       "it is the most useful thing here to a stranger; a form in front of it "
       "asks for an email at the moment a person is least willing to give one")
 check("and it invites signup rather than demanding it",
@@ -93,7 +93,7 @@ check("and it invites signup rather than demanding it",
 print("\n=== 2. Gated paths are gated ===")
 for path in ("/shop", "/cart", "/product/MSC-1001"):
     st, body, _ = go(path)
-    check(f"{path} shows the gate", "Sign up to continue" in body, f"status {st}")
+    check(f"{path} shows the gate", 'data-gate="1"' in body, f"status {st}")
 check("the gate is a 200, not a 401 or a redirect", go("/shop")[0] == 200,
       "a 401 prompts for HTTP basic auth in some browsers; a redirect loses "
       "the page they wanted")
@@ -105,7 +105,7 @@ check("secret is long enough to be one", len(sec) >= 20, f"{len(sec)} chars")
 for path in ("/shop", "/cart"):
     st, body, _ = go(path, cookies=[f"pst={token}"])
     check(f"{path} opens with the cookie",
-          st == 200 and "Sign up to continue" not in body, f"status {st}")
+          st == 200 and 'data-gate="1"' not in body, f"status {st}")
 
 print("\n=== 4. THE GATE MUST NOT BREAK THE MACHINE ENDPOINTS ===")
 good = CXML.replace("{SID}", sid).replace("{SEC}", sec).encode()

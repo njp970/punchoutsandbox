@@ -232,7 +232,7 @@ check(f"all {len(links)} internal links resolve", not broken, "; ".join(broken))
 # =========================================================================== #
 section("C. The gate")
 # =========================================================================== #
-GATE = "Sign up to continue"
+GATE = 'data-gate="1"'
 for path in ("/docs", "/validate", "/contact"):
     reply = request(path, use_cookies=False)
     check(f"{path} is open", GATE not in reply.text, f"HTTP {reply.status}")

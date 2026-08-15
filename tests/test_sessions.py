@@ -255,7 +255,7 @@ check("a dead COOKIE warns too, not just a dead link",
 
 print("\n=== 5e. A dead session is not a reason to ask for an email ===")
 # The shopper is the buyer's employee. When their session expired mid-browse
-# the gate answered "Sign up to continue" — asking someone to open an account
+# the gate answered 'data-gate="1"' — asking someone to open an account
 # on a supplier's website in the middle of raising a requisition. They cannot
 # act on it and it does not describe what happened.
 sessions.reset_store(CopyingStore())
