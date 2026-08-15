@@ -31,6 +31,38 @@ env = Environment(
 env.globals["site_url"] = os.environ.get("SITE_URL", "https://punchoutsandbox.com")
 
 
+def _asset_version() -> str:
+    """A short hash of the static assets, appended to their URLs.
+
+    =========================================================================
+    WHY: CLOUDFLARE CACHES CSS FOR FOUR HOURS WHATEVER WE ASK FOR
+    =========================================================================
+    The static route sets `max-age=300`. Cloudflare ignores that for
+    stylesheets and applies its own four-hour TTL, so a deployed CSS change
+    reached nobody for four hours — including us, mid-verification, looking at
+    a page and concluding the fix had not worked.
+
+    Purging on every deploy is the wrong answer twice over: it needs a
+    permission this token does not have, and it makes correctness depend on
+    remembering a step. A content hash in the URL means a changed file is a
+    NEW url, which no cache can have a stale copy of. The old URL stays
+    cached, harmlessly, for anyone still on the old HTML.
+
+    Computed once at import: these files cannot change within the life of a
+    container, and hashing them per request would be work done for nothing."""
+    import hashlib
+    digest = hashlib.sha256()
+    static = os.path.join(os.path.dirname(__file__), "static")
+    for name in sorted(os.listdir(static)):
+        if name.endswith((".css", ".js", ".svg")):
+            with open(os.path.join(static, name), "rb") as handle:
+                digest.update(handle.read())
+    return digest.hexdigest()[:10]
+
+
+env.globals["asset_version"] = _asset_version()
+
+
 def render(template: str, **context) -> str:
     """Render a template.
 

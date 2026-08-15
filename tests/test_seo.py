@@ -217,8 +217,10 @@ check("no template carries an inline event handler or script block",
       "script-src 'self'")
 
 _, body, _ = get("/")
+# The URL carries a content hash now, so match the path rather than the
+# whole attribute — see ui/render.py on why the hash is there.
 check("the one script file is loaded from our own origin",
-      'src="/static/app.js"' in body)
+      'src="/static/app.js?v=' in body)
 _, _, headers = get("/static/app.js")
 check("...and served as JavaScript",
       "javascript" in headers.get("content-type", ""),
@@ -268,6 +270,26 @@ _, sitemap_body, _ = get("/sitemap.xml")
 for path in _signup.SITE_VERIFICATION:
     check(f"{path} is kept out of the sitemap", path not in sitemap_body,
           "it is a proof of ownership, not a page")
+
+
+print("\n12. Static assets are cache-busted, not cache-purged")
+# Cloudflare applies a four-hour TTL to stylesheets whatever the origin asks
+# for, so a deployed CSS change reached nobody for four hours — including us,
+# mid-verification, concluding the fix had not worked. A content hash in the
+# URL means a changed file is a NEW url.
+from app.ui.render import env as _env
+
+version = _env.globals.get("asset_version", "")
+check("an asset version is computed", len(version) >= 8, version)
+_, body, _ = get("/docs")
+check("the stylesheet URL carries it", f"/static/app.css?v={version}" in body,
+      version)
+check("so does the script", f"/static/app.js?v={version}" in body)
+_, _, headers = get("/static/app.css")
+check("...and hashed assets are cached hard",
+      "immutable" in headers.get("cache-control", ""),
+      headers.get("cache-control", "") + " — safe precisely because the URL "
+      "changes when the file does")
 
 
 print("\n" + "=" * 70)

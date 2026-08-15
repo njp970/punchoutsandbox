@@ -39,9 +39,9 @@
 {% if canonical %}<meta property="og:url" content="{{ site_url }}{{ canonical }}">{% endif %}
 {# Summary card, no image: a fabricated screenshot would be worse than none. #}
 <meta name="twitter:card" content="summary">
-<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/static/app.css">
-<script src="/static/app.js" defer></script>
+<link rel="icon" href="/static/favicon.svg?v={{ asset_version }}" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css?v={{ asset_version }}">
+<script src="/static/app.js?v={{ asset_version }}" defer></script>
 {% block head_extra %}{% endblock %}
 </head>
 <body>
@@ -55,6 +55,19 @@
         </span>
       </a>
     </div>
+
+    {#
+      MOBILE NAVIGATION, WITHOUT JAVASCRIPT.
+      A checkbox and a label, not a script. The CSP allows our own JS, so a
+      toggle would be permitted — but navigation that depends on a script has
+      a failure mode navigation should not have, and this has none. The
+      checkbox is hidden from sight and from the accessibility tree; the label
+      is the button, and it is only rendered at all below the breakpoint.
+    #}
+    <input type="checkbox" id="nav-toggle" class="nav-toggle" tabindex="-1">
+    <label for="nav-toggle" class="nav-toggle-label">
+      <span aria-hidden="true">☰</span> Menu
+    </label>
 
     <nav class="nav">
       <a href="/" class="{{ 'active' if nav == 'home' }}">Home</a>

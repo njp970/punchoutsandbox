@@ -449,19 +449,83 @@ input:focus, select:focus, textarea:focus {
   padding: 1px 7px; display: inline-block;
 }
 
+/* ---------- the phone ----------
+
+   Who actually arrives on a phone: somebody who followed a link from a forum
+   post or a Slack message and is deciding whether this is worth opening on a
+   real machine later. That is a READING visit — the landing page, the docs,
+   the reference. The tools (validate, the storefront, the order screens) are
+   desktop work and are not pretended otherwise.
+
+   So the priorities here are, in order: navigate, read, and do not clip
+   anything. */
+
+/* The toggle itself is never seen. `appearance:none` rather than
+   `display:none`, because a display:none checkbox cannot be operated by its
+   label in some engines. */
+.nav-toggle { position: absolute; opacity: 0; pointer-events: none; appearance: none; width: 0; height: 0; margin: 0; }
+.nav-toggle-label { display: none; }
+
 @media (max-width: 860px) {
   .shell { flex-direction: column; }
+
   .sidebar {
-    width: auto; flex: none; flex-direction: row; align-items: center;
-    justify-content: space-between; border-right: none;
-    border-bottom: 1px solid var(--line); padding: 11px 16px; gap: 12px;
+    width: auto; flex: none; border-right: none;
+    border-bottom: 1px solid var(--line);
+    padding: 10px 14px; gap: 10px;
+    display: grid; grid-template-columns: 1fr auto; align-items: center;
   }
-  .sidebar .nav { flex-direction: row; overflow-x: auto; gap: 3px; }
-  .sidebar .nav-label { display: none; }
-  /* margin-top:auto has nothing to push against in a row, so the foot would
-     otherwise collapse against the nav. The note is dropped rather than
-     wrapped — a horizontal bar has no room for a second line. */
-  .sidebar-foot { margin-top: 0; padding-top: 0; border-top: none; flex: 0 0 auto; }
-  .sidebar-foot-note { display: none; }
-  .main { padding: 20px 16px 48px; }
+
+  /* The brand used to wrap onto three lines and eat a third of the screen. */
+  .brand { font-size: 15px; }
+  .brand-sub { display: none; }
+
+  .nav-toggle-label {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 13px; border-radius: var(--radius);
+    border: 1px solid var(--line-strong); background: var(--surface);
+    color: var(--ink); font-size: 13.5px; font-weight: 560;
+    cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  .nav-toggle:focus-visible + .nav-toggle-label { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Closed by default. It used to be a horizontally scrolling strip with
+     about 60px of room for thirteen links, between a three-line brand and a
+     coffee chip — which is to say, no navigation at all. */
+  .sidebar .nav { display: none; grid-column: 1 / -1; flex-direction: column; gap: 2px; }
+  .nav-toggle:checked ~ .nav { display: flex; }
+  .sidebar .nav a { padding: 11px 12px; font-size: 15px; }   /* a touch target */
+  .sidebar .nav-label { display: block; margin-top: 10px; }
+
+  .sidebar-foot {
+    grid-column: 1 / -1; margin-top: 0; padding-top: 10px;
+    display: none;
+  }
+  .nav-toggle:checked ~ .sidebar-foot { display: block; }
+
+  .main { padding: 20px 15px 48px; }
+  h1 { font-size: 25px; }
+
+  /* Definition-style tables — a label column and a prose column — stack
+     instead of scrolling sideways. A two-column table at 375px is unreadable
+     however smoothly it scrolls. Tables WITH a <thead> are real data and keep
+     scrolling, because stacking a six-column row makes it worse. */
+  .card table:not(:has(thead)) th,
+  .card table:not(:has(thead)) td { display: block; border-bottom: none; padding: 2px 0; }
+  .card table:not(:has(thead)) th { padding-top: 12px; white-space: normal; }
+  .card table:not(:has(thead)) tr { display: block; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+  .card table:not(:has(thead)) tr:last-child { border-bottom: none; }
+
+  /* Long identifiers, URLs and part numbers must not push the page sideways.
+     The body scrolling horizontally is the one thing that makes a page feel
+     broken rather than merely cramped. */
+  code, pre, .copyfield code { overflow-wrap: anywhere; }
+  .doc-body pre { overflow-x: auto; }
+}
+
+@media (max-width: 460px) {
+  /* The coffee link is the first thing to go when there is no room; it asks
+     for something, and a first-time reader has not decided anything yet. */
+  .support-link { width: 100%; justify-content: center; }
+  .main { padding: 16px 12px 40px; }
 }

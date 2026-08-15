@@ -995,8 +995,11 @@ def static(request: Request) -> Response:
         ".ico": "image/x-icon",
         ".woff2": "font/woff2",
     }.get(os.path.splitext(name)[1], "application/octet-stream")
+    # A year, because the URL carries a content hash (ui/render.py) — a
+    # changed file is a different URL, so nothing stale can be served. Without
+    # the hash this would be reckless; with it, anything shorter is waste.
     return Response(body=body, content_type=kind,
-                    headers={"cache-control": "public, max-age=300"})
+                    headers={"cache-control": "public, max-age=31536000, immutable"})
 
 
 # --------------------------------------------------------------------------- #
