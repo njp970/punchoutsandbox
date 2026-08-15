@@ -317,3 +317,29 @@ zones including `punchoutsandbox.com` — established by asking Cloudflare, not
 by reading the description. `zone_id()` reports which zones a credential can
 actually see when a lookup fails, because "zone not found" otherwise reads as
 "the zone is missing" rather than "this token cannot see it".
+
+### What QA could not have found
+
+The suite above is 147 checks against the deployed site and it is worth having.
+It did not find the two worst bugs in this application.
+
+Both were found by an outside integrator pointing a real buyer system at the
+service for an afternoon:
+
+- **A punchout session survived exactly one page view.** Invisible to QA
+  because the QA client signs up before it does anything, and therefore always
+  carries an account cookie.
+- **A stale `pos` cookie shadowed a fresh StartPage URL.** Invisible because
+  the QA client starts each run with an empty jar, so it never carries the
+  residue a real developer's browser does.
+
+The pattern is the same in both: **the harness was well-behaved in exactly the
+way that hid the bug.** A test client that signs up first cannot see a gate
+that only affects people who have not. A test client with no cookie history
+cannot see a precedence bug between a cookie and a URL.
+
+That is not an argument for more checks. It is an argument for the thing the
+checks cannot replace — someone using it for real, whose setup is untidy in
+ways nobody thought to simulate. Both bugs are now pinned by tests
+(`test_sessions.py` §5b–5e), but the tests were written *after* the report, and
+would not have existed without it.

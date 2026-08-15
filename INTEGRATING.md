@@ -143,6 +143,25 @@ the shopper to sign up, because they are your employee and you authenticated on
 their behalf. `/shop` is a department index; products live in leaf categories
 with dotted ids like `office.paper`.
 
+**Start each run with a clean cookie jar.** `rm -f jar` first. A fresh
+`?session=` in the StartPage URL beats any leftover `pos` cookie — that
+precedence used to be the wrong way round, and it broke the round trip for
+exactly the person testing it — but a harness carrying session state between
+runs is its own hazard.
+
+**A returned cart is single-use.** Returning it clears it, so a back-button
+resubmit cannot double the requisition. To test a second return, start a
+second punchout.
+
+### What the status codes mean
+
+| You get | It means |
+|---|---|
+| `410 Gone`, "That punchout session has ended" | The session expired — they last an hour — or that cart was already returned. Start a new punchout. |
+| `409`, "No punchout session" | You are signed in but have no live session: the StartPage URL was never followed, or the cart is already back. |
+| `200` with "Sign up to continue" | No session *and* no account cookie. Your jar is empty — check the StartPage `GET` actually stored one. |
+| `401` cXML `Status` on a machine endpoint | Credentials not recognised. Note the HTTP status is still 200; read the cXML. |
+
 ### Receiving documents
 
 Set your cXML inbox at `/settings`, then generate a confirmation, ship notice or
