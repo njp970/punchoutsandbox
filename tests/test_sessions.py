@@ -201,6 +201,58 @@ if issued:
     check("...and the cart can still be returned", ret["statusCode"] == 200,
           f"HTTP {ret['statusCode']} — 409 here is the bug this guards")
 
+print("\n=== 5c. A fresh StartPage URL beats a stale cookie ===")
+# Reported from a real integration, and it cost an hour. `_token` preferred
+# the `pos` COOKIE over the `?session=` query parameter, so a stale cookie —
+# from /console, or from last week's punchout — shadowed the token a buyer
+# system had minted seconds earlier. When the stale session had also expired,
+# the fresh one was never looked up at all: no banner, cart into the anonymous
+# holder, and /cart/return answering "No punchout session" about a session
+# that was alive.
+#
+# The person guaranteed to be carrying a stale cookie is the developer who has
+# been clicking around the demo console — the one person running a punchout in
+# order to prove their integration works.
+sessions.reset_store(CopyingStore())
+_account()
+expired = Session(session_id="stale", buyer_name="Demo", buyer_cookie="old",
+                  return_url="https://old.example/r")
+expired.expires_at = time.time() - 1
+sessions.store().put(expired)
+fresh_session = Session(session_id="fresh", buyer_name="Northgate",
+                        buyer_cookie="req-99",
+                        return_url="https://buyer.example.com/return")
+sessions.store().put(fresh_session)
+
+landing = _body(request("/shop", query={"session": "fresh"}, cookies=["pos=stale"]))
+check("the URL token wins over the stale cookie",
+      "Punchout session active" in landing,
+      "a query parameter is a deliberate act; a cookie is residue")
+check("...and it is the RIGHT buyer", "Northgate" in landing)
+
+issued = [c for c in request("/shop", query={"session": "fresh"},
+                             cookies=["pos=stale"]).get("cookies", [])
+          if c.startswith("pos=")]
+check("...and the stale cookie is overwritten",
+      any("pos=fresh" in c for c in issued), issued)
+
+request("/cart/add", "POST", b"sku=MSC-1001&quantity=2", ["pos=fresh"])
+result = request("/cart/return", "POST", b"mode=cart", ["pos=fresh"])
+check("the cart returns to the right buyer",
+      result["statusCode"] == 200
+      and "buyer.example.com/return" in _body(result),
+      f'HTTP {result["statusCode"]} — 409 here was the reported symptom')
+
+print("\n=== 5d. A dead session says so instead of failing silently ===")
+page = _body(request("/shop", query={"session": "never-existed"}))
+check("an unresolvable link warns", "No punchout session" in page,
+      "everything else on the page looks normal, which is the problem")
+check("...and explains what to do", "expired" in page and "buyer system" in page)
+page = _body(request("/shop", cookies=["pos=also-gone"]))
+check("a dead COOKIE warns too, not just a dead link",
+      "No punchout session" in page,
+      "clicking Cart after the session times out is the same dead end")
+
 print("\n=== 6. An unknown or expired token degrades to anonymous ===")
 result = request("/shop", cookies=["pos=does-not-exist"])
 check("unknown token still serves the shop", result["statusCode"] == 200,

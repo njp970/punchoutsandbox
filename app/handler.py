@@ -74,7 +74,27 @@ BROWSE_PROTOCOL = "browse"
 
 
 def _token(request: Request) -> Optional[str]:
-    return request.cookies.get("pos") or request.query.get("session")
+    """Which punchout session this request belongs to.
+
+    =====================================================================
+    THE URL WINS. IT USED TO BE THE OTHER WAY ROUND, AND THAT COST AN HOUR
+    =====================================================================
+    `?session=` is a DELIBERATE ACT: a buyer system minted that token seconds
+    ago and put it in the StartPage URL it just handed the shopper. The `pos`
+    cookie is RESIDUE — left by some earlier visit, possibly to `/console`,
+    possibly to a punchout that finished last Tuesday.
+
+    Preferring the cookie meant a stale one shadowed the fresh token entirely.
+    If the stale session had also expired, the fresh one was never even looked
+    up: no banner, the cart went to the anonymous holder, and `/cart/return`
+    answered "No punchout session" for a session that was alive and well.
+
+    The person guaranteed to be carrying a stale `pos` cookie is the developer
+    who has been clicking around the demo console — that is, the one person
+    running a punchout in order to prove their integration works. It failed
+    precisely for them, and only for them, which is the worst possible
+    distribution for a bug."""
+    return request.query.get("session") or request.cookies.get("pos")
 
 
 def _cart_context(request: Request, *, create: bool = False):
@@ -112,6 +132,20 @@ def _cart_context(request: Request, *, create: bool = False):
         found = sessions.store().get(token)
         if found is not None and found.protocol != BROWSE_PROTOCOL:
             punchout = found
+        elif found is None:
+            # A token that resolves to nothing is worth SAYING, whether it
+            # came from the URL or from a cookie left by an earlier visit.
+            # Falling silently back to anonymous browsing is what turned an
+            # expired session into an hour of debugging: everything on screen
+            # looked normal until the cart refused to go home.
+            where = ("The punchout session in that link"
+                     if request.query.get("session")
+                     else "Your previous punchout session")
+            request._session_notice = (
+                f"{where} is no longer valid — it has either expired (they "
+                "last an hour) or the cart was already returned. You are "
+                "browsing anonymously now, so there is nowhere to send a cart "
+                "back to. Start a new punchout from your buyer system.")
 
     holder = punchout
     if holder is None:
@@ -154,6 +188,13 @@ def _queue_cookie(request: Request, cookie: str) -> None:
         request._pending_cookies = pending
     if cookie not in pending:
         pending.append(cookie)
+
+
+def session_notice(request: Request) -> str:
+    """Anything the visitor should be told about their session state.
+
+    Read after `get_session`, which is what populates it."""
+    return getattr(request, "_session_notice", "")
 
 
 def get_session(request: Request) -> tuple[Optional[Session], dict[str, int]]:
@@ -396,7 +437,8 @@ def sitemap(request: Request) -> Response:
 @router.get("/shop/{category}")
 def shop(request: Request) -> Response:
     session, cart = get_session(request)
-    return storefront.view_shop(request, session=session, cart=cart)
+    return storefront.view_shop(request, session=session, cart=cart,
+                                notice=session_notice(request))
 
 
 @router.get("/product/{sku}")
@@ -408,7 +450,8 @@ def product(request: Request) -> Response:
 @router.get("/cart")
 def cart(request: Request) -> Response:
     session, cart_state = get_session(request)
-    return storefront.view_cart(request, session=session, cart=cart_state)
+    return storefront.view_cart(request, session=session, cart=cart_state,
+                                notice=session_notice(request))
 
 
 @router.post("/cart/add")

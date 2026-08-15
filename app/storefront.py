@@ -185,14 +185,15 @@ def cart_totals(lines: list[dict], *, country: str = "GB") -> dict:
 # --------------------------------------------------------------------------- #
 # Views
 # --------------------------------------------------------------------------- #
-def view_shop(request: Request, *, session=None, cart: dict[str, int]) -> Response:
+def view_shop(request: Request, *, session=None, cart: dict[str, int],
+              notice: str = "") -> Response:
     query = (request.query.get("q") or "").strip()
     category_id = request.params.get("category")
 
     if query:
         products = search(query)
         return html(render(
-            "shop.html", nav="shop", session=session, cart_count=len(cart),
+            "shop.html", notice=notice, nav="shop", session=session, cart_count=len(cart),
             heading="Search results", query=query, supplier=SUPPLIER_NAME,
             breadcrumb=[], subcategories=[],
             products=[_card(p) for p in products],
@@ -202,7 +203,7 @@ def view_shop(request: Request, *, session=None, cart: dict[str, int]) -> Respon
     if category_id:
         children = children_of(category_id)
         return html(render(
-            "shop.html", nav="shop", session=session, cart_count=len(cart),
+            "shop.html", notice=notice, nav="shop", session=session, cart_count=len(cart),
             heading=next((c.name for c in CATEGORIES if c.id == category_id),
                          "Catalogue"),
             breadcrumb=ancestry(category_id), supplier=SUPPLIER_NAME,
@@ -219,7 +220,7 @@ def view_shop(request: Request, *, session=None, cart: dict[str, int]) -> Respon
         ))
 
     return html(render(
-        "shop.html", nav="shop", session=session, cart_count=len(cart),
+        "shop.html", notice=notice, nav="shop", session=session, cart_count=len(cart),
         heading="Meridian Supply Co.", supplier=SUPPLIER_NAME, breadcrumb=[],
         subcategories=[
             {"id": c.id, "name": c.name, "count": len(products_in_tree(c.id))}
@@ -263,10 +264,11 @@ def view_product(request: Request, *, session=None, cart: dict[str, int]) -> Res
     ))
 
 
-def view_cart(request: Request, *, session=None, cart: dict[str, int]) -> Response:
+def view_cart(request: Request, *, session=None, cart: dict[str, int],
+              notice: str = "") -> Response:
     lines = cart_lines(cart)
     return html(render(
-        "cart.html", nav="cart", session=session, cart_count=len(cart),
+        "cart.html", notice=notice, nav="cart", session=session, cart_count=len(cart),
         lines=lines, totals=cart_totals(lines) if lines else None,
     ))
 

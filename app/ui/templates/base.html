@@ -101,6 +101,17 @@
 
   <main class="main">
     <div class="main-wide">
+      {#
+        A session problem outranks everything else on the page: the visitor is
+        about to shop into a cart with nowhere to go home to, and every other
+        signal on screen looks normal.
+      #}
+      {% if notice %}
+      <div class="banner banner-warn" style="margin-bottom:20px">
+        <span aria-hidden="true">&#9888;</span>
+        <div><strong>No punchout session</strong> &mdash; {{ notice }}</div>
+      </div>
+      {% endif %}
       {% if session %}
       <div class="banner banner-info" style="margin-bottom:20px">
         <span aria-hidden="true">&#8646;</span>
