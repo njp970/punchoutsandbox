@@ -253,6 +253,29 @@ check("a dead COOKIE warns too, not just a dead link",
       "No punchout session" in page,
       "clicking Cart after the session times out is the same dead end")
 
+print("\n=== 5e. A dead session is not a reason to ask for an email ===")
+# The shopper is the buyer's employee. When their session expired mid-browse
+# the gate answered "Sign up to continue" — asking someone to open an account
+# on a supplier's website in the middle of raising a requisition. They cannot
+# act on it and it does not describe what happened.
+sessions.reset_store(CopyingStore())
+tenants.reset_store(MemoryTenants())          # NO account cookie at all
+anonymous = {"requestContext": {"http": {"method": "GET", "path": "/shop"}},
+             "queryStringParameters": {"session": "long-gone"}, "headers": {},
+             "cookies": [], "body": "", "isBase64Encoded": False}
+result = handler(anonymous)
+page = _body(result)
+check("an expired link explains itself", "session has ended" in page,
+      f'HTTP {result["statusCode"]}')
+check("...rather than demanding a signup", "Get my credentials" not in page,
+      "they are the buyer's user; the account belongs to whoever configured "
+      "the connection")
+check("...with 410 Gone, which is what happened",
+      result["statusCode"] == 410, f'HTTP {result["statusCode"]}')
+check("...and tells them where to go", "procurement system" in page)
+
+_account()
+
 print("\n=== 6. An unknown or expired token degrades to anonymous ===")
 result = request("/shop", cookies=["pos=does-not-exist"])
 check("unknown token still serves the shop", result["statusCode"] == 200,

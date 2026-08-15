@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Punchout session ended — PunchOut Sandbox{% endblock %}
+{% block content %}
+<div style="max-width:54ch">
+  <h1>That punchout session has ended</h1>
+  <p class="muted" style="margin-top:-4px">{{ notice }}</p>
+
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">What to do</h2></div>
+    <p class="card-note" style="margin:0 0 12px">
+      Go back to your procurement system and start the punchout again. Sessions
+      last an hour, and a cart that has already been returned cannot be
+      returned twice &mdash; that is deliberate, because a second return would
+      duplicate the lines on your requisition.
+    </p>
+    <p class="card-note" style="margin:0">
+      Nothing was lost at your end. Anything you had in the cart here was never
+      part of your requisition until it was returned.
+    </p>
+  </div>
+
+  <p class="small muted">
+    You do <strong>not</strong> need an account for this. If you were sent here
+    by your purchasing system, you are the buyer's user and the account belongs
+    to whoever configured the connection. <a href="/docs">The docs</a> explain
+    the handshake if you are the one building it.
+  </p>
+</div>
+{% endblock %}

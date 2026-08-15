@@ -1089,6 +1089,21 @@ def handler(event: dict, context=None) -> dict:
                             c for c in pending if c not in response.cookies]
                     return response.to_lambda()
 
+        # A DEAD SESSION IS NOT A REASON TO ASK FOR AN EMAIL ADDRESS.
+        #
+        # The shopper is the buyer's employee. Their session expired mid-browse
+        # — they last an hour and people shop for longer than they mean to —
+        # and the gate answered "Sign up to continue", which asks somebody to
+        # open an account on a supplier's website in the middle of raising a
+        # requisition. They cannot act on it and it does not describe what
+        # happened. Same failure as gating the storefront itself, wearing a
+        # different hat.
+        if tenant is None and session_notice(request) \
+                and signup.storefront_path(request.path):
+            return html(render("session_expired.html", nav="",
+                               notice=session_notice(request)),
+                        status=410).to_lambda()
+
         if tenant is None:
             # The machine endpoints authenticate with issued credentials
             # instead of a cookie — a buyer system cannot fill in a form.
