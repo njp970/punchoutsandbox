@@ -98,13 +98,40 @@ def current_tenant(request: Request) -> Optional[Tenant]:
     return store().get(token) if token else None
 
 
-def create_tenant(email: str, company: str = ""):
-    """Mint an account. Shared by the HTML form and the JSON API, so the two
-    cannot drift into issuing subtly different accounts."""
+def create_tenant(email: str, company: str = "") -> tuple:
+    """Get or create the account for an address. Returns `(tenant, is_new)`.
+
+    =========================================================================
+    THE SAME EMAIL MUST NOT MINT A SECOND ACCOUNT
+    =========================================================================
+    It used to. And the natural path through this service walks straight into
+    it: take credentials from `/api/signup` for your integration, then open the
+    site to look at the resulting orders — signing up again, because that is
+    what the site offers. Two accounts, and the orders you just sent are
+    invisible to the browser you are looking at them with. The order screen
+    then answers 404, which reads as "that order does not exist" rather than
+    "it belongs to your other account".
+
+    Returning the existing account means the shared secret is shown again to
+    anyone who knows the address. That is a deliberate trade and a small one:
+    the account guards nothing but a daily quota over a catalogue of invented
+    companies, and the alternative — an account you cannot get back into —
+    fails the people this exists for.
+
+    Shared by the HTML form and the JSON API so the two cannot drift."""
+    existing = store().by_email(email)
+    if existing is not None:
+        # A company supplied on a later signup is still worth keeping if the
+        # first one had none; overwriting a good value with a blank is not.
+        if company.strip() and not existing.company:
+            existing.company = company.strip()[:120]
+            store().put(existing)
+        return existing, False
+
     tenant = Tenant(tenant_id=secrets.token_urlsafe(18),
                     email=email.strip()[:200], company=company.strip()[:120])
     store().put(tenant)
-    return tenant
+    return tenant, True
 
 
 def view_signup(request: Request) -> Response:
@@ -129,12 +156,12 @@ def view_signup(request: Request) -> Response:
                            error="That does not look like an email address."),
                     status=400)
 
-    tenant = create_tenant(email, company)
+    tenant, is_new = create_tenant(email, company)
 
     return Response(
         status=200,
         body=render("welcome.html", nav="signup", tenant=tenant,
-                    returning=False),
+                    returning=not is_new),
         # A year, matching the account TTL. Secure as well as HttpOnly:
         # the comment here used to claim Secure while the string omitted it,
         # which QA caught. It rides the same Cloudflare TLS as everything

@@ -213,6 +213,50 @@ check("and the signup prompt is gone",
 tenants.reset_store(None)
 sessions.reset_store(None)
 
+print("\n=== 12. Signing up twice returns the SAME account ===")
+# The natural path walked straight into this: take credentials from
+# /api/signup for your integration, then open the site to look at the orders —
+# signing up again, because that is what the site offers. Two accounts, and
+# the orders you just sent are invisible to the browser you are viewing them
+# with. The order screen then answers 404, which reads as "no such order".
+fresh()
+first_token, first_id, first_secret = signup_now("same@example.com")
+second_token, second_id, second_secret = signup_now("same@example.com")
+check("the identity is the same", first_id == second_id,
+      f"{first_id} vs {second_id}")
+check("the shared secret is the same", first_secret == second_secret,
+      "re-issuing would break whatever they had already configured")
+check("...and so is the session", first_token == second_token)
+
+check("case and whitespace do not create a second account",
+      signup_now("  SAME@Example.COM  ")[1] == first_id,
+      "an address typed with a capital is the same address")
+
+# Plus-addressing is NOT collapsed, deliberately.
+check("but plus-addressing is respected as a different address",
+      signup_now("same+ci@example.com")[1] != first_id,
+      "a+ci@x and a@x are different addresses to the person who owns them")
+
+status, page, _ = go("/signup", "POST", urlencode({"email": "same@example.com"}).encode())
+check("the page says it is an existing account", "again" in page.lower()
+      or "already" in page.lower() or "returning" in page.lower(),
+      "otherwise it looks like a new account was made")
+
+print("\n=== 13. An account is reachable from its own credentials ===")
+# The specific 404 that started this: order sent with the API identity,
+# browser holding a different account's cookie.
+fresh()
+token, sandbox_id, secret = signup_now("owner@example.com")
+by_id = tenants.store().by_sandbox_id(sandbox_id)
+by_email = tenants.store().by_email("owner@example.com")
+check("by_sandbox_id and by_email agree",
+      by_id is not None and by_email is not None
+      and by_id.tenant_id == by_email.tenant_id,
+      "the machine path and the browser path must land on one account")
+check("...and the cookie points at it too",
+      by_id.tenant_id == token)
+
+
 print("\n" + "=" * 62)
 if failures:
     print(f"{len(failures)} FAILED: {failures}")

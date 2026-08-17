@@ -269,13 +269,16 @@ def build_invoice_document(
         supplier_country=SUPPLIER_COUNTRY, buyer_country=country,
         buyer_has_tax_id=buyer_has_tax_id, goods=True)
 
+    currency = order.currency or priced[0].currency or "GBP"
     calculation = calculate(
         [TaxableLine(line_number=line.line_number, net_amount=line.subtotal)
          for line in priced],
-        jurisdiction_code=country, treatment=treatment, rounding=rounding)
+        jurisdiction_code=country, treatment=treatment, rounding=rounding,
+        # Without this the totals quantize to 2dp whatever the currency, and
+        # a yen invoice reads JPY 1000.00.
+        currency=currency)
     calculation.notes = list(reasons) + list(calculation.notes)
 
-    currency = order.currency or priced[0].currency or "GBP"
     invoice_lines = [
         InvoiceLine(
             line_number=index,

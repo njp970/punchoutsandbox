@@ -240,9 +240,12 @@ def view_signup(request: Request) -> Response:
                        "reach you if something you depend on changes.",
         }, status=400)
 
-    tenant = signup.create_tenant(email, company)
-    telemetry.event("api_signup")
+    tenant, is_new = signup.create_tenant(email, company)
+    telemetry.event("api_signup", new=is_new)
     return json_response({
+        # False when the address already had an account. Signing up twice is
+        # idempotent by design — see signup.create_tenant.
+        "created": is_new,
         "identity": tenant.sandbox_id,
         "sharedSecret": tenant.shared_secret,
         "dailyQuota": tenants.DAILY_QUOTA,
@@ -260,4 +263,4 @@ def view_signup(request: Request) -> Response:
             "orderInbox": "POST /order",
             "ociSetup": "POST /oci/setup",
         },
-    }, status=201)
+    }, status=201 if is_new else 200)

@@ -55,19 +55,28 @@ from decimal import ROUND_HALF_UP, Decimal as D
 from enum import Enum
 from typing import Optional
 
+from . import currency as currency_precision
 from .rates import EU_MEMBERS, Jurisdiction, TaxSystem, get
 
 TWO_PLACES = D("0.01")
 
 
-def money(value: D) -> D:
-    """Round to 2dp, half-up. The single rounding entry point.
+def money(value: D, currency: str = "") -> D:
+    """Round to the currency's own precision, half-up. The single rounding
+    entry point.
 
     Half-up rather than Python's default banker's rounding: ROUND_HALF_EVEN
     would turn 2.345 into 2.34, which is correct statistically and wrong
     commercially — invoices round half away from zero, and a buyer checking
-    our arithmetic by hand would get a different answer."""
-    return value.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+    our arithmetic by hand would get a different answer.
+
+    `currency` decides the number of places. It used to be two, unconditionally
+    — so a yen invoice read `JPY 1000.00`, and the yen has no minor unit. An
+    amount claiming a precision its currency does not have is wrong in exactly
+    the quiet way this service exists to catch: the DTD only knows the field is
+    a number, so it validates, and the buyer platform decides what to do about
+    it. Empty means two, which is what almost every currency is."""
+    return currency_precision.quantize(value, currency)
 
 
 class Rounding(str, Enum):
@@ -354,6 +363,7 @@ def calculate(
     jurisdiction_code: str,
     treatment: TaxTreatment,
     rounding: Rounding = Rounding.PER_LINE,
+    currency: str = "",
 ) -> TaxCalculation:
     """Compute the tax bands for an invoice.
 
@@ -376,23 +386,23 @@ def calculate(
     for (band_treatment, rate), taxable in sorted(
         bands.items(), key=lambda kv: (kv[0][0].value, kv[0][1])
     ):
-        taxable = money(taxable)
+        taxable = money(taxable, currency)
         if rounding is Rounding.PER_LINE:
             amount = sum(
-                (money(l.net_amount * rate / D("100")) for l in lines
+                (money(l.net_amount * rate / D("100"), currency) for l in lines
                  if (l.treatment or treatment, _rate_for(j, l.treatment or treatment,
                                                          l.rate_override)) == (band_treatment, rate)),
                 D("0"),
             )
         else:
-            amount = money(taxable * rate / D("100"))
+            amount = money(taxable * rate / D("100"), currency)
 
         tax_lines.append(
             TaxLine(
                 treatment=band_treatment,
                 rate=rate,
                 taxable_amount=taxable,
-                tax_amount=money(amount),
+                tax_amount=money(amount, currency),
                 # FREE TEXT, deliberately. TaxDetail@category is %string; in the
                 # DTD, not an enumeration — real traffic carries "vat", "CA" and
                 # "Standard Rate". A validator that enum-checks this rejects
@@ -411,27 +421,27 @@ def calculate(
             )
         )
 
-    subtotal = money(sum((l.net_amount for l in lines), D("0")))
-    tax_total = money(sum((t.tax_amount for t in tax_lines), D("0")))
+    subtotal = money(sum((l.net_amount for l in lines), D("0")), currency)
+    tax_total = money(sum((t.tax_amount for t in tax_lines), D("0")), currency)
 
     # What would the other method have given? Reported, never silently applied.
     other = Rounding.HEADER if rounding is Rounding.PER_LINE else Rounding.PER_LINE
     alt_total = D("0")
     for (band_treatment, rate), taxable in bands.items():
         if other is Rounding.HEADER:
-            alt_total += money(money(taxable) * rate / D("100"))
+            alt_total += money(money(taxable, currency) * rate / D("100"), currency)
         else:
             alt_total += sum(
-                (money(l.net_amount * rate / D("100")) for l in lines
+                (money(l.net_amount * rate / D("100"), currency) for l in lines
                  if (l.treatment or treatment, _rate_for(j, l.treatment or treatment,
                                                          l.rate_override)) == (band_treatment, rate)),
                 D("0"),
             )
-    delta = money(alt_total) - tax_total
+    delta = money(alt_total, currency) - tax_total
     if delta:
         notes.append(
             f"Rounding {rounding.value} gives {tax_total}; rounding "
-            f"{other.value} would give {money(alt_total)}, a difference of "
+            f"{other.value} would give {money(alt_total, currency)}, a difference of "
             f"{delta}. Both are defensible, and a buyer using the other method "
             "will disagree with this invoice by that amount every time."
         )
@@ -459,7 +469,7 @@ def calculate(
         rounding=rounding,
         subtotal=subtotal,
         tax_total=tax_total,
-        net_total=money(subtotal + tax_total),
+        net_total=money(subtotal + tax_total, currency),
         lines=tax_lines,
         rounding_delta=delta,
         notes=notes,

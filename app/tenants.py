@@ -121,9 +121,20 @@ class Tenant:
         return True, DAILY_QUOTA - self.used_today
 
 
+def normalise_email(email: str) -> str:
+    """The key an account is looked up by.
+
+    Lowercased and trimmed, and NOTHING else. Plus-addressing is deliberately
+    not collapsed: `a+ci@x.com` and `a@x.com` are different addresses to the
+    person who owns them, and quietly merging them would hand somebody an
+    account they did not ask for."""
+    return (email or "").strip().lower()
+
+
 class TenantStore(Protocol):
     def get(self, tenant_id: str) -> Optional[Tenant]: ...
     def by_sandbox_id(self, sandbox_id: str) -> Optional[Tenant]: ...
+    def by_email(self, email: str) -> Optional[Tenant]: ...
     def put(self, tenant: Tenant) -> None: ...
     def count(self) -> int: ...
 
@@ -141,6 +152,13 @@ class MemoryTenants:
     def by_sandbox_id(self, sandbox_id):
         for t in self._items.values():
             if t.sandbox_id == sandbox_id and not t.expired:
+                return t
+        return None
+
+    def by_email(self, email):
+        wanted = normalise_email(email)
+        for t in self._items.values():
+            if normalise_email(t.email) == wanted and not t.expired:
                 return t
         return None
 
@@ -198,6 +216,20 @@ class DynamoTenants:
             Key={"pk": f"SANDBOXID#{sandbox_id}", "sk": "POINTER"}).get("Item")
         return self.get(pointer["tenant_id"]) if pointer else None
 
+    def by_email(self, email):
+        """Look up an account by the address it was created with.
+
+        A pointer row rather than a GSI, matching `by_sandbox_id` — two access
+        patterns, two pointers, no index projection decisions.
+
+        Accounts created before this pointer existed have none. They acquire
+        one the next time `put` runs, which is every quota check, so an active
+        account heals itself on first use."""
+        pointer = self.table.get_item(
+            Key={"pk": f"EMAIL#{normalise_email(email)}", "sk": "POINTER"}
+        ).get("Item")
+        return self.get(pointer["tenant_id"]) if pointer else None
+
     def put(self, tenant):
         self.table.put_item(Item={
             **self._key(tenant.tenant_id),
@@ -215,6 +247,11 @@ class DynamoTenants:
         })
         self.table.put_item(Item={
             "pk": f"SANDBOXID#{tenant.sandbox_id}", "sk": "POINTER",
+            "tenant_id": tenant.tenant_id,
+            "expires_at": int(tenant.expires_at),
+        })
+        self.table.put_item(Item={
+            "pk": f"EMAIL#{normalise_email(tenant.email)}", "sk": "POINTER",
             "tenant_id": tenant.tenant_id,
             "expires_at": int(tenant.expires_at),
         })

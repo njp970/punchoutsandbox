@@ -147,7 +147,7 @@ def _invoice() -> bytes:
     calculation = calculate(
         [TaxableLine(line_number=1, net_amount=lines[0].subtotal)],
         jurisdiction_code="GB", treatment=TaxTreatment.STANDARD,
-        rounding=Rounding.PER_LINE)
+        rounding=Rounding.PER_LINE, currency="GBP")
     return build_invoice(
         Invoice(invoice_id="INV-PO-1001", invoice_date=_now(),
                 order_id="PO-1001", order_payload_id="the-order-payload-id",
@@ -251,7 +251,7 @@ def _invoice_split_line() -> bytes:
         [TaxableLine(line_number=line.line_number, net_amount=line.subtotal)
          for line in lines],
         jurisdiction_code="GB", treatment=TaxTreatment.STANDARD,
-        rounding=Rounding.PER_LINE)
+        rounding=Rounding.PER_LINE, currency="GBP")
     return build_invoice(
         Invoice(invoice_id="INV-PO-1001-B", invoice_date=_now(),
                 order_id="PO-1001", order_payload_id="the-order-payload-id",

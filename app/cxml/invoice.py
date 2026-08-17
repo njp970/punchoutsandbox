@@ -54,6 +54,7 @@ from datetime import datetime
 from decimal import Decimal as D
 from typing import Optional
 
+from ..tax import currency as currency_precision
 from ..tax.engine import TaxCalculation, TaxTreatment
 
 _DOCTYPE = (
@@ -91,7 +92,15 @@ def _stamp(value: datetime, *, who: str) -> str:
 
 
 def _money(tag: str, amount: D, currency: str) -> str:
-    return f'<{tag}><Money currency="{_attr(currency)}">{amount}</Money></{tag}>'
+    """Every `Money` element in the document goes through here.
+
+    Quantized to the CURRENCY's precision at this single point, rather than
+    trusting whatever the caller computed. `JPY 1000.00` validates against the
+    DTD — the DTD only knows the field is a number — and is still wrong, since
+    the yen has no minor unit. One formatting point means one place to be
+    right, instead of every caller having to remember."""
+    return (f'<{tag}><Money currency="{_attr(currency)}">'
+            f'{currency_precision.quantize(amount, currency)}</Money></{tag}>')
 
 
 @dataclass(frozen=True)

@@ -11,6 +11,7 @@ Note what that gives us that a round-trip test cannot: `build_invoice` and
 description of the format. This is the "independent judge" of BRIEF.md §2
 being applied to ourselves.
 """
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal as D
@@ -173,3 +174,50 @@ if failures:
     print(f"{len(failures)} FAILED: {failures}")
     sys.exit(1)
 print("every generated invoice validates against the real cXML DTD")
+
+
+print("\n=== Currencies without two decimal places ===")
+# Everything quantized to 2dp because sterling, the euro and the dollar have
+# two and they are what got tested. So a yen invoice read `JPY 1000.00`, and
+# the yen has no minor unit. It validated against the DTD — the DTD only knows
+# the field is a number — which is exactly the quiet kind of wrong this
+# service exists to catch.
+from app.tax import currency as _cur
+
+check("the yen has no minor unit", _cur.minor_units("JPY") == 0)
+check("the Kuwaiti dinar has three", _cur.minor_units("KWD") == 3)
+check("sterling has two", _cur.minor_units("GBP") == 2)
+check("an unknown code assumes two rather than raising",
+      _cur.minor_units("ZZZ") == 2,
+      "an invoice in a currency we have not enumerated is better emitted "
+      "with the ordinary assumption than refused")
+check("lowercase is accepted", _cur.minor_units("jpy") == 0)
+
+for code, amount, expected in (("JPY", D("1000.00"), "1000"),
+                               ("GBP", D("1000"), "1000.00"),
+                               ("KWD", D("1.5"), "1.500"),
+                               ("JPY", D("1000.6"), "1001")):
+    got = str(_cur.quantize(amount, code))
+    check(f"{code} {amount} formats as {expected}", got == expected, got)
+
+for code in ("JPY", "GBP", "KWD", "KRW"):
+    lines = [InvoiceLine(1, D("3"), "EA", D("1000"), "SKU", "Widget", 1,
+                         classification="14111507")]
+    calc = calculate([TaxableLine(1, lines[0].subtotal)], jurisdiction_code="GB",
+                     treatment=TaxTreatment.STANDARD, rounding=Rounding.PER_LINE,
+                     currency=code)
+    inv = Invoice("INV-C", NOW, "PO-C", "p@x", code, lines, calc,
+                  [SUPPLIER, BUYER])
+    raw = build_invoice(inv, payload_id="c@s", timestamp=NOW,
+                        from_identity="s", to_identity="b",
+                        sender_identity="s", shared_secret="k").decode()
+    places = _cur.minor_units(code)
+    amounts = re.findall(rf'<Money currency="{code}">([\d.]+)</Money>', raw)
+    def dp(value):
+        return len(value.split(".")[1]) if "." in value else 0
+    check(f"every Money element in a {code} invoice carries {places} places",
+          amounts and all(dp(a) == places for a in amounts),
+          f"{sorted(set(amounts))}")
+    report = validate(parse(raw.encode()))
+    check(f"...and the {code} invoice still validates", not report.errors,
+          "; ".join(e.message[:50] for e in report.errors))
