@@ -50,7 +50,10 @@ REGION = "eu-west-2"
 
 #: Reserved by RFC 2606 for documentation, so an address here cannot belong to
 #: a real person — which is what makes deleting on this pattern safe.
-TEST_EMAIL = re.compile(r"@punchoutsandbox\.example$", re.I)
+# Not anchored to the end of the string. A shell quoting slip once stored an
+# address as `...@punchoutsandbox.example}` — real enough to create an account,
+# and outside an anchored pattern, so it survived every cleanup run.
+TEST_EMAIL = re.compile(r"@punchoutsandbox\.example", re.I)
 TEST_ORDER = re.compile(r"^(PO-QA-|PO-XSS-|PO-LIVE-1$)")
 
 

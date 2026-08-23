@@ -184,6 +184,23 @@ check("submission succeeds", status == 200, f"got {status}")
 check("the account is named in the body",
       mailer.outbox and tenant.email in mailer.outbox[0]["body"])
 
+print("\n12. The digest tells real usage from ours")
+# The point of the digest is subtraction. A first version reported "nobody has
+# used it" directly above six orders — all from the QA suite — because it
+# filtered test ACCOUNTS and then counted every order. A number contradicting
+# the headline above it destroys the credibility of both.
+from app import digest
+
+check("the QA domain is recognised as test traffic",
+      digest._is_test("qa+1@punchoutsandbox.example"))
+check("...even when the address is malformed",
+      digest._is_test("qa@punchoutsandbox.example}"),
+      "a shell quoting slip once created exactly this, and an anchored "
+      "pattern let it survive every cleanup")
+check("a real address is not", not digest._is_test("someone@company.com"))
+check("case does not matter", digest._is_test("QA@PunchOutSandbox.Example"))
+
+
 print("\n" + "=" * 70)
 if failures:
     print(f"FAILED ({len(failures)}): " + ", ".join(failures))

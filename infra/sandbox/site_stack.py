@@ -89,6 +89,8 @@ from aws_cdk import (
     aws_iam as iam,
     aws_lambda as lambda_,
     aws_logs as logs,
+    aws_events as events,
+    aws_events_targets as targets,
 )
 from constructs import Construct
 
@@ -208,6 +210,65 @@ class SiteStack(Stack):
                 "StringEquals": {"ses:FromAddress": f"contact@{mail_domain}"}
             },
         ))
+
+        # ---- The weekly digest ---------------------------------------------
+        #
+        # Same code bundle, different entry point. A separate Lambda rather
+        # than a branch inside the request handler because it has a different
+        # trigger, a different timeout and different permissions — and because
+        # a scheduled job sharing a function with the request path is one
+        # deploy away from a cold start on somebody's punchout.
+        #
+        # It answers "has anyone used this?" without anyone having to remember
+        # to ask. See app/digest.py on why subtracting our own traffic is the
+        # hard part.
+        self.digest = lambda_.Function(
+            self, "Digest",
+            function_name=f"punchout-sandbox-digest-{stage}",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="app.digest.handler",
+            code=lambda_.Code.from_asset(_ASSET_PATH),
+            architecture=lambda_.Architecture.ARM_64,
+            # A table scan plus a log scan plus an HTTP call. Generous, and
+            # nowhere near the request path's concurrency budget.
+            timeout=Duration.seconds(120),
+            memory_size=512,
+            # One reserved slot. It runs weekly; it must never be able to
+            # compete with the site, let alone with Xenia.
+            reserved_concurrent_executions=1,
+            environment={
+                "SANDBOX_TABLE": table.table_name,
+                "STAGE": stage,
+                "SITE_URL": site_url,
+                "MAIL_FROM": f"contact@{mail_domain}",
+                **({"CONTACT_TO": contact_to} if contact_to else {}),
+            },
+        )
+        table.grant_read_data(self.digest)
+        self.digest.add_to_role_policy(iam.PolicyStatement(
+            actions=["ses:SendEmail", "ses:SendRawEmail"],
+            resources=[
+                f"arn:aws:ses:{self.region}:{self.account}:identity/{mail_domain}"
+            ],
+            conditions={
+                "StringEquals": {"ses:FromAddress": f"contact@{mail_domain}"}
+            },
+        ))
+        # Read-only on the request handler's log group, which is where the
+        # telemetry events live.
+        self.digest.add_to_role_policy(iam.PolicyStatement(
+            actions=["logs:FilterLogEvents", "logs:DescribeLogGroups"],
+            resources=[log_group.log_group_arn, f"{log_group.log_group_arn}:*"],
+        ))
+
+        # Monday morning, UTC. Early enough to be read with the week's first
+        # coffee, late enough that a Sunday visitor is already counted.
+        events.Rule(
+            self, "DigestSchedule",
+            schedule=events.Schedule.cron(minute="0", hour="8", week_day="MON"),
+            targets=[targets.LambdaFunction(self.digest)],
+            description="Weekly usage digest for punchoutsandbox.com",
+        )
 
         self.function_url = self.fn.add_function_url(
             auth_type=lambda_.FunctionUrlAuthType.NONE,

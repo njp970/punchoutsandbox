@@ -343,3 +343,55 @@ checks cannot replace — someone using it for real, whose setup is untidy in
 ways nobody thought to simulate. Both bugs are now pinned by tests
 (`test_sessions.py` §5b–5e), but the tests were written *after* the report, and
 would not have existed without it.
+
+---
+
+## 14. Knowing whether anyone has used it
+
+`punchout-sandbox-digest-prod` runs every Monday at 08:00 UTC and emails a
+report. Same code bundle as the site, different entry point (`app/digest.py`),
+one reserved concurrency slot so a weekly job can never compete with a request.
+
+Run it on demand:
+
+```bash
+aws lambda invoke --function-name punchout-sandbox-digest-prod --profile xenia --region eu-west-2 --payload '{}' /tmp/digest.json
+```
+
+### The hard part is subtraction, not counting
+
+Almost all traffic here is ours. Every QA run signs up two accounts, posts a
+purchase order, generates three documents and attempts a delivery. A digest
+that counted all of it would report a busy service every week and be worse
+than nothing, because it would read as evidence.
+
+So test traffic is **named and subtracted**, and the headline is about what is
+left. `@punchoutsandbox.example` is RFC 2606 reserved, so no real person can
+hold one — the subtraction is by construction rather than by heuristic.
+
+The first version got this half right and reported *"Nobody has used it yet"*
+directly above **six orders received**, because it filtered test accounts and
+then counted every order. Orders are attributed to their tenant now, and an
+order whose tenant no longer exists is ours by construction: cleanup deletes
+test accounts and nothing deletes a real one.
+
+### What it deliberately does not report
+
+**Clone counts.** A public repo is swept by mirrors, scanners and training
+crawlers — this one showed 80 unique cloners against 1 unique visitor and 0
+stars in its first fortnight. Reported without that context, the number reads
+as adoption.
+
+**Anything requiring a GitHub token.** Views and referrers need authentication,
+and a scheduled Lambda holding a credential to read a star count is a poor
+trade. Stars, forks and watchers are public and are enough.
+
+### Status as of the first run, 23 August 2026
+
+Nobody outside this project has used it. Five accounts existed, four of them
+the operator's own duplicates from before signup became idempotent, one a test
+address. Every order, delivery and contact message in the logs was ours.
+
+That is the expected position nine days after the repo went public with one
+outreach PR and search verification completed the same week — recorded here so
+the first genuinely external signup is recognisable as one.
