@@ -201,6 +201,31 @@ check("a real address is not", not digest._is_test("someone@company.com"))
 check("case does not matter", digest._is_test("QA@PunchOutSandbox.Example"))
 
 
+print("\n13. Events name the account without logging an address")
+# signup.html promises we store an address, a company and a counter. An email
+# in a log line is a fourth thing, accumulating where nobody audits it — so
+# events carry the ISSUED sandbox id and the digest joins it back to an
+# address from DynamoDB, keeping the personal data in the declared place.
+import io as _io
+from contextlib import redirect_stdout as _redirect
+from app import telemetry as _tel
+from app.tenants import Tenant as _T
+
+person = _T(tenant_id="t9", email="someone@company.com", sandbox_id="PSB999",
+            shared_secret="s")
+check("account_of returns the issued id", _tel.account_of(person) == "PSB999")
+check("...and None for a stranger", _tel.account_of(None) is None)
+
+buffer = _io.StringIO()
+with _redirect(buffer):
+    _tel.event("validate", account=_tel.account_of(person), errors=2)
+emitted = buffer.getvalue()
+check("the event names the account", '"account": "PSB999"' in emitted, emitted.strip())
+check("...and the address appears nowhere in it",
+      "someone@company.com" not in emitted,
+      "an email in a log is personal data in an undeclared place")
+
+
 print("\n" + "=" * 70)
 if failures:
     print(f"FAILED ({len(failures)}): " + ", ".join(failures))

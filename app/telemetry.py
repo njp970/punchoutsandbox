@@ -36,6 +36,7 @@ import hashlib
 import json
 import os
 import sys
+from typing import Optional
 
 #: Salts the IP hash. Absent in local dev, which is fine — the tag is only
 #: meaningful within one deployment anyway.
@@ -52,6 +53,21 @@ def ip_tag(ip: str) -> str:
         return "none"
     digest = hashlib.sha256(f"{_SALT}|{ip}".encode()).hexdigest()
     return digest[:12]
+
+
+def account_of(tenant) -> Optional[str]:
+    """The identifier to attribute an event to.
+
+    The ISSUED sandbox id, never the email address. The id is opaque, was
+    minted by us, and means nothing outside this service; an email address in
+    a log is personal data accumulating in a place nobody audits, and
+    `signup.html` promises we store an address, a company and a counter — not
+    a log of everything that address did.
+
+    The weekly digest joins the id back to an address from DynamoDB when it
+    needs to name somebody, which keeps the personal data in the one place
+    that is already declared."""
+    return getattr(tenant, "sandbox_id", None) or None
 
 
 def event(name: str, **fields) -> None:

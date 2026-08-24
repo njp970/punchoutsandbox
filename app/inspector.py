@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import html as _html
 
+from . import telemetry
 from .http import Request, Response, html
 from .signup import current_tenant
 from .ui.render import render
@@ -115,6 +116,14 @@ def view_validate(request: Request) -> Response:
             signed_in=current_tenant(request) is not None))
 
     report = validate(doc)
+    # The single most-used route on the site, and it emitted nothing — so when
+    # two accounts ran 53 operations each, the logs could not say whether they
+    # had validated a document or merely opened the page.
+    telemetry.event("validate",
+                    account=telemetry.account_of(current_tenant(request)),
+                    document_type=report.document_type,
+                    errors=len(report.errors),
+                    advisories=len(report.advisories))
     error_lines = {f.line for f in report.errors if f.line}
     return html(render(
         "validate.html", nav="validate", sample=_SAMPLE, document=document,

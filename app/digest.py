@@ -76,6 +76,45 @@ def _is_test(email: str) -> bool:
     return TEST_DOMAIN in (email or "").lower()
 
 
+def _events_by_account(since: float) -> dict:
+    """Per-account event counts, keyed by the issued sandbox id.
+
+    Added because the first interesting week was unreadable: three accounts
+    ran 53 gated operations each and the logs could not say whether that was
+    fifty validations or fifty page loads. Signup is cheap; knowing somebody
+    came back and did fifty of something is the whole signal."""
+    import boto3
+    logs = boto3.client("logs")
+    group = f"/aws/lambda/punchout-sandbox-{os.environ.get('STAGE', 'prod')}"
+    per: dict = {}
+    token = None
+    try:
+        while True:
+            kwargs = {"logGroupName": group, "startTime": int(since * 1000),
+                      "limit": 10000}
+            if token:
+                kwargs["nextToken"] = token
+            page = logs.filter_log_events(**kwargs)
+            for entry in page.get("events", []):
+                message = entry.get("message", "").strip()
+                if not message.startswith("{"):
+                    continue
+                try:
+                    payload = json.loads(message)
+                except json.JSONDecodeError:
+                    continue
+                name = payload.get("event")
+                account = payload.get("account")
+                if not name or not account:
+                    continue
+                per.setdefault(account, Counter())[name] += 1
+            token = page.get("nextToken")
+            if not token:
+                return per
+    except Exception:
+        return per
+
+
 def _events(since: float) -> Counter:
     """Count telemetry events in the window.
 
@@ -187,7 +226,14 @@ def build_report(now: Optional[datetime.datetime] = None) -> tuple[str, str]:
     recent_orders = [o for o in recent if order_is_real(o)]
     test_orders = [o for o in recent if not order_is_real(o)]
     events = _events(since_ts)
+    by_account = _events_by_account(since_ts)
     github = _github()
+
+    # sandbox_id -> email, so the log can stay free of personal data while the
+    # digest still names who did what. See telemetry.account_of.
+    identity_email = {
+        str(t.get("sandbox_id")): str(t.get("email", "")) for t in tenants
+    }
 
     real = len(new_accounts)
     total_real_accounts = len([
@@ -224,6 +270,21 @@ def build_report(now: Optional[datetime.datetime] = None) -> tuple[str, str]:
     ]
     for email in new_accounts:
         lines.append(f"      {email}")
+    # What people actually DID, per account. The most useful block in the
+    # report when it is not empty.
+    active = []
+    for identity, counts in by_account.items():
+        email = identity_email.get(identity, "(unknown account)")
+        if _is_test(email):
+            continue
+        summary = ", ".join(f"{n.replace('_', ' ')} {c}"
+                            for n, c in counts.most_common())
+        active.append((email, summary))
+    if active:
+        lines.append("  What they did")
+        for email, summary in sorted(active):
+            lines.append(f"      {email}: {summary}")
+
     lines += [
         f"  Orders received        {len(recent_orders)}",
         f"  Contact messages       {events.get('contact_received', 0)}"

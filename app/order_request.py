@@ -107,8 +107,9 @@ def handle_order(request: Request, tenant, *, site_url: str) -> Response:
     )
     orders.store().put(record)
 
-    telemetry.event("order_received", lines=len(order.lines),
-                    conformant=report.conformant, errors=len(report.errors))
+    telemetry.event("order_received", account=telemetry.account_of(tenant),
+                    lines=len(order.lines), conformant=report.conformant,
+                    errors=len(report.errors))
 
     detail = "; ".join(
         [f"orderID={order.order_id}",

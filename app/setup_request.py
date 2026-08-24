@@ -53,6 +53,7 @@ import secrets
 from datetime import datetime, timezone
 from typing import Optional
 
+from . import telemetry
 from .http import Request, Response
 from .sessions import Session, store
 from .validation import describe_findings, validate
@@ -69,6 +70,8 @@ def _text(root, path: str) -> Optional[str]:
 
 def _status_response(code: int, text: str, detail: str = "") -> Response:
     """A cXML `Status`-only response.
+    """
+    """A cXML `Status`-only response.
 
     Returned with **HTTP 200**, deliberately. The spec is explicit that any
     HTTP reply without valid cXML content is a TRANSPORT error, which clients
@@ -76,6 +79,10 @@ def _status_response(code: int, text: str, detail: str = "") -> Response:
     with an explanation would therefore turn a permanent, actionable refusal
     into an hours-long retry storm against us. Business-level errors ride
     inside a 200."""
+    # Emitted here rather than at each call site, so a refusal path added
+    # later cannot be silent. A 401 on this endpoint is the single most useful
+    # thing to know about a stranger's first attempt.
+    telemetry.event("punchout_setup", outcome=str(code))
     body = (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<!DOCTYPE cXML SYSTEM "http://xml.cxml.org/schemas/cXML/1.2.071/cXML.dtd">'
@@ -143,6 +150,8 @@ def handle_setup(request: Request, *, site_url: str) -> Response:
     # all", because URL length limits bite — so it is an opaque token, not the
     # buyer cookie and identity inlined.
     start_page = f"{site_url}/shop?session={session.session_id}"
+    telemetry.event("punchout_setup", outcome="200", operation=operation,
+                    conformant=report.conformant, errors=len(report.errors))
 
     observed = (
         f"operation={operation}; "
