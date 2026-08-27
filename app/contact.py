@@ -43,11 +43,24 @@ the alternative to logging it is losing it.
 """
 from __future__ import annotations
 
+import os
+import secrets
+import time
 from typing import Optional
 
 from . import mailer, signup, telemetry, tenants
 from .http import Request, Response, html
 from .ui.render import render
+
+#: How long a message is kept. Thirty days rather than the seven orders get:
+#: the point of keeping it at all is to survive a missed or filtered weekly
+#: digest, and a week only just covers one digest cycle.
+MESSAGE_TTL_SECONDS = 30 * 24 * 3600
+
+#: Local development only, exactly as `sessions.MemoryStore` is. Never
+#: selected when a table is configured.
+_local_messages: list[dict] = []
+
 
 MAX_NAME = 120
 MAX_EMAIL = 200
@@ -67,6 +80,41 @@ TOPICS = [
     ("other", "Something else"),
 ]
 _TOPIC_KEYS = {key for key, _ in TOPICS}
+
+
+def save_message(record: dict) -> None:
+    """Keep a copy of what somebody wrote.
+
+    =========================================================================
+    WHY A MESSAGE IS STORED AS WELL AS EMAILED
+    =========================================================================
+    A message really was delivered to the operator's mail server, accepted
+    without a bounce, and never seen — filtered into a junk folder by a
+    two-week-old sending domain. All that survived on our side was
+    `topic=help`, because the body is only written to the log when sending
+    FAILS, and this one succeeded.
+
+    For a service whose entire feedback channel is this one form, that is a
+    bad place to have a single point of failure. The mail is still the primary
+    route; this is the copy that makes a filtered mail recoverable, and the
+    weekly digest reads from it.
+
+    Never raises. A message that reached the inbox but could not be filed is
+    not worth failing the request over — the sender would be told to try
+    again, and would send a duplicate that failed the same way."""
+    try:
+        table_name = os.environ.get("SANDBOX_TABLE")
+        if not table_name:
+            _local_messages.append(record)
+            return
+        import boto3
+        boto3.resource("dynamodb").Table(table_name).put_item(Item={
+            "pk": f"MESSAGE#{record['id']}", "sk": "META",
+            **{k: v for k, v in record.items() if k != "id"},
+            "expires_at": int(time.time()) + MESSAGE_TTL_SECONDS,
+        })
+    except Exception as exc:
+        telemetry.event("contact_store_failed", error=type(exc).__name__)
 
 
 def _page(*, request: Request, error: Optional[str] = None, sent: bool = False,
@@ -131,6 +179,16 @@ def view_contact(request: Request) -> Response:
         reply_to=email,
         kind="contact",
     )
+    # Filed whether or not the mail went out. A delivered message that lands
+    # in a junk folder is exactly as lost as one that never sent.
+    save_message({
+        "id": f"{int(time.time())}-{secrets.token_urlsafe(6)}",
+        "received_at": int(time.time()),
+        "topic": topic, "name": name, "email": email, "message": message,
+        "delivered": delivered,
+        "signed_in": tenant is not None,
+    })
+
     if not delivered:
         telemetry.event("contact_undelivered", topic=topic, email=email,
                         message=message)

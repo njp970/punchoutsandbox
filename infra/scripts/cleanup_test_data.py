@@ -96,6 +96,8 @@ def main() -> int:
             keys.append((key, f"account {doomed_tenants[pk.split('#', 1)[1]]}"))
         elif pk.startswith("SANDBOXID#") and str(item.get("tenant_id", "")) in doomed_tenants:
             keys.append((key, f"credential pointer {pk.split('#', 1)[1]}"))
+        elif pk.startswith("MESSAGE#") and TEST_EMAIL.search(str(item.get("email", ""))):
+            keys.append((key, f"contact message from {item.get('email')}"))
         elif pk.startswith("ORDERS#") and TEST_ORDER.match(str(item.get("order_id", ""))):
             keys.append((key, f"order listing {item.get('order_id')}"))
         elif pk.startswith("ORDER#"):

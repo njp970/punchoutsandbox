@@ -187,6 +187,7 @@ def build_report(now: Optional[datetime.datetime] = None) -> tuple[str, str]:
     items = _scan_all(_table())
     tenants = [i for i in items if str(i.get("pk", "")).startswith("TENANT#")]
     orders = [i for i in items if str(i.get("pk", "")).startswith("ORDERS#")]
+    messages = [i for i in items if str(i.get("pk", "")).startswith("MESSAGE#")]
 
     new_accounts, new_test, new_operator = [], [], []
     for tenant in tenants:
@@ -234,6 +235,10 @@ def build_report(now: Optional[datetime.datetime] = None) -> tuple[str, str]:
     identity_email = {
         str(t.get("sandbox_id")): str(t.get("email", "")) for t in tenants
     }
+
+    recent_messages = sorted(
+        (m for m in messages if float(m.get("received_at", 0)) >= since_ts),
+        key=lambda m: float(m.get("received_at", 0)))
 
     real = len(new_accounts)
     total_real_accounts = len([
@@ -287,12 +292,31 @@ def build_report(now: Optional[datetime.datetime] = None) -> tuple[str, str]:
 
     lines += [
         f"  Orders received        {len(recent_orders)}",
-        f"  Contact messages       {events.get('contact_received', 0)}"
-        "   (includes any you sent yourself — they reach your inbox too)",
+        f"  Contact messages       {len(recent_messages)}"
+        + ("   (reproduced in full below)" if recent_messages else ""),
         f"  Documents delivered    {events.get('delivery', 0)}",
         f"  Anonymous limit hit    {events.get('anon_quota_exhausted', 0)}",
         "",
     ]
+
+    # THE MESSAGES THEMSELVES, not a count of them. One was delivered to the
+    # operator's mail server, accepted, and filtered into a junk folder where
+    # nobody saw it — so the digest, which does get read, carries the text.
+    if recent_messages:
+        lines += ["", "MESSAGES SENT THROUGH THE CONTACT FORM", ""]
+        for m in recent_messages:
+            when = datetime.datetime.utcfromtimestamp(
+                float(m.get("received_at", 0))).strftime("%d %b %H:%M UTC")
+            sender = str(m.get("name") or "").strip()
+            lines += [
+                f"  {when}  [{m.get('topic')}]  "
+                f"{sender + ' ' if sender else ''}<{m.get('email')}>"
+                + ("" if m.get("delivered") else "   (the email FAILED to send)"),
+                "",
+            ]
+            for paragraph in str(m.get("message", "")).splitlines():
+                lines.append(f"      {paragraph}")
+            lines += ["", "  " + "-" * 56, ""]
 
     if github:
         lines += [

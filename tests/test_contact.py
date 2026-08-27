@@ -226,6 +226,44 @@ check("...and the address appears nowhere in it",
       "an email in a log is personal data in an undeclared place")
 
 
+print("\n14. A message survives the email being filtered")
+# One really was delivered to the operator's mail server, accepted without a
+# bounce, and filtered into a junk folder. All that survived on our side was
+# topic=help — no address, no name, no text — because the body is only logged
+# when SENDING fails, and that one succeeded. There was no way to reply.
+fresh()
+contact._local_messages.clear()
+go("/contact", "POST", {**GOOD, "name": "Dana Fields",
+                        "email": "dana@buyer.example",
+                        "message": "Ariba truncates Description at 254 for us."})
+check("the message is filed", len(contact._local_messages) == 1,
+      f"{len(contact._local_messages)} stored")
+if contact._local_messages:
+    kept = contact._local_messages[0]
+    check("...with the address we would need to reply",
+          kept["email"] == "dana@buyer.example", kept.get("email"))
+    check("...the name", kept["name"] == "Dana Fields")
+    check("...the text itself", "Ariba truncates" in kept["message"])
+    check("...and whether the email actually went",
+          "delivered" in kept, sorted(kept))
+
+# Filed even when the mail cannot be sent at all — that is the case where the
+# stored copy is the only copy.
+contact._local_messages.clear()
+mailer.outbox.clear()
+go("/contact", "POST", {**GOOD, "message": "This one could not be emailed."})
+check("filed even when sending is unconfigured",
+      len(contact._local_messages) == 1)
+check("...and marked as not delivered",
+      contact._local_messages[0]["delivered"] is False)
+
+contact._local_messages.clear()
+go("/contact", "POST", {**GOOD, contact.HONEYPOT_FIELD: "http://x"})
+check("a honeypot submission is NOT filed",
+      len(contact._local_messages) == 0,
+      "storing bot noise for thirty days is how the digest becomes unreadable")
+
+
 print("\n" + "=" * 70)
 if failures:
     print(f"FAILED ({len(failures)}): " + ", ".join(failures))
