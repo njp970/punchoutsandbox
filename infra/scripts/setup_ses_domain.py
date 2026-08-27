@@ -111,6 +111,8 @@ def main() -> int:
     ap.add_argument("--domain", default=ZONE_NAME)
     ap.add_argument("--dmarc", action="store_true",
                     help="Also publish a p=none DMARC record if none exists.")
+    ap.add_argument("--spf", action="store_true",
+                    help="Also publish an SPF record authorising SES.")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -143,6 +145,31 @@ def main() -> int:
         for token in tokens
     ]
 
+    if args.spf:
+        # =================================================================
+        # WHY THIS WAS MISSING, AND WHY IT MATTERS
+        # =================================================================
+        # DKIM alone satisfies DMARC when the signing domain aligns, which it
+        # does here — so mail from this domain passes DMARC without SPF, and
+        # nothing bounces. It still costs deliverability: a young domain with
+        # no SPF, sending to a personal mailbox, with a Reply-To on a
+        # different domain from the From, is a combination spam filters score
+        # harshly. A contact-form message really did land somewhere the
+        # operator never saw it.
+        #
+        # `-all` rather than `~all`: SES is the ONLY thing that sends as this
+        # domain, so a hard fail is both accurate and stronger. If a mailbox
+        # provider is ever added for this domain, this record has to change
+        # first or its mail will be rejected.
+        records.append({
+            "type": "TXT",
+            "name": args.domain,
+            "content": "v=spf1 include:amazonses.com -all",
+            "proxied": False,
+            "ttl": 1,
+            "comment": "SPF — SES is the only sender for this domain",
+        })
+
     if args.dmarc:
         records.append({
             "type": "TXT",
@@ -164,17 +191,46 @@ def main() -> int:
 
     existing = _cf(session, "GET", f"/zones/{zone_id}/dns_records",
                    params={"per_page": 200})["result"]
-    by_name = {(r["name"], r["type"]): r for r in existing}
+
+    def _match(record):
+        """Find the record this one replaces, if any.
+
+        =================================================================
+        MATCHING BY (name, type) DESTROYED A LIVE RECORD. DO NOT GO BACK.
+        =================================================================
+        A name can hold many TXT records and they are independent. This
+        matched on name and type alone, so adding SPF at the apex found the
+        Google Search Console verification TXT sitting there, decided it was
+        the same record, and PATCHED it out of existence. The output said
+        `updated` and nothing looked wrong.
+
+        `deploy_search_verification.py` was written with a docstring warning
+        about exactly this hazard. This script was not fixed at the same time,
+        on the reasoning that its own records had distinct names — which was
+        true right up until it was asked to write one that did not.
+
+        TXT records therefore match on name AND a content prefix; everything
+        else, whose content is a target rather than a value, still matches on
+        name and type."""
+        same_name = [r for r in existing
+                     if r["name"] == record["name"] and r["type"] == record["type"]]
+        if record["type"] != "TXT":
+            return same_name[0] if same_name else None
+        prefix = record["content"].split("=")[0] + "="
+        for candidate in same_name:
+            if candidate["content"].startswith(prefix):
+                return candidate
+        return None
 
     for record in records:
-        key = (record["name"], record["type"])
-        if key in by_name:
+        found = _match(record)
+        if found:
             _cf(session, "PATCH",
-                f"/zones/{zone_id}/dns_records/{by_name[key]['id']}", json=record)
-            print(f"dns     : updated {record['name']}")
+                f"/zones/{zone_id}/dns_records/{found['id']}", json=record)
+            print(f"dns     : updated {record['name']} ({record['content'][:28]}…)")
         else:
             _cf(session, "POST", f"/zones/{zone_id}/dns_records", json=record)
-            print(f"dns     : created {record['name']}")
+            print(f"dns     : created {record['name']} ({record['content'][:28]}…)")
 
     print("\nDKIM records published. SES verifies asynchronously — usually")
     print("minutes, occasionally an hour. Check with:")
