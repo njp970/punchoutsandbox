@@ -131,7 +131,7 @@ supplier willing to send you real documents.
 curl -s -c jar -b jar -X POST https://punchoutsandbox.com/punchout/setup \
      -H 'content-type: text/xml' --data-binary @setup.xml    # → StartPage URL
 curl -s -c jar -b jar "$START_PAGE"                          # sets the session cookie
-curl -s -c jar -b jar https://punchoutsandbox.com/shop/office.paper
+curl -s -c jar -b jar https://punchoutsandbox.com/shop/office.paper.copier
 curl -s -c jar -b jar -X POST .../cart/add -d 'sku=MSC-1001&quantity=3'
 curl -s -c jar -b jar -X POST .../cart/return -d 'mode=cart' # → cxml-base64 field
 ```
@@ -140,8 +140,11 @@ Base64-decode the `cxml-base64` field and you have the cart.
 
 A live punchout session is authorisation on its own — the storefront never asks
 the shopper to sign up, because they are your employee and you authenticated on
-their behalf. `/shop` is a department index; products live in leaf categories
-with dotted ids like `office.paper`.
+their behalf. `/shop` is a department index, and the tree is deeper than two
+levels: `office.paper` is a **branch** holding `office.paper.copier` and
+`office.paper.pads`. Products appear only in leaves, so keep descending until
+the page stops offering you sub-departments. Asking a branch for products
+returns a page with none on it, which looks exactly like an empty catalogue.
 
 **Start each run with a clean cookie jar.** `rm -f jar` first. A fresh
 `?session=` in the StartPage URL beats any leftover `pos` cookie — that
