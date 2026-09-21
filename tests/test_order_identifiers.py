@@ -104,7 +104,7 @@ t = fresh()
 text, _ = post(order(t, "PO-9001"))
 check("accepted", 'code="200"' in text)
 for phrase in ("characters (", "non-ASCII", "JSON-style", "doubly-encoded",
-               "already used", "received 1 time"):
+               "other document", "received 1 time"):
     check(f"...and does not mention '{phrase}'", phrase not in text)
 
 
@@ -166,11 +166,11 @@ t = fresh()
 post(order(t, "PO-651", payload="p-a"))
 text, _ = post(order(t, "PO-651", payload="p-a"))
 check("same payloadID again is recognised as a retry",
-      "received 1 time(s) before" in text and "already used" not in text)
+      "received 1 time(s) before" in text and "other document" not in text)
 
 text, events = post(order(t, "PO-651", payload="p-b"))
 check("a new payloadID with the same orderID is a second order",
-      "already used by 1 earlier order(s)" in text,
+      "used by 1 other document(s)" in text,
       text[text.find('orderID PO-651'):][:120])
 check("...and says what to send instead", 'type="update"' in text)
 check("...the order is still stored — reporting, not refusing",
@@ -178,16 +178,22 @@ check("...the order is still stored — reporting, not refusing",
 check("the telemetry counts the notes",
       any(e.get("event") == "order_received" and e.get("notes", 0) >= 1 for e in events))
 
+text, _ = post(order(t, "PO-651", payload="p-b"))
+check("retrying the SECOND of two documents is called a retry",
+      "received 1 time(s) before" in text, "found in production: it was told to reuse its payloadID")
+check("...and the other document is still mentioned, separately",
+      "also used by 1 other document(s)" in text)
+
 text, _ = post(order(t, "PO-651", payload="p-c", kind="update"))
 check('type="update" reusing the orderID is not called a duplicate',
-      "already used" not in text)
+      "other document" not in text)
 
 other = Tenant(tenant_id="acct-2", email="c@d.example", sandbox_id="PSB100000002",
                shared_secret="secret-2")
 tenants.store().put(other)
 text, _ = post(order(other, "PO-651", payload="p-z"))
 check("another account's orderIDs are not this account's duplicates",
-      "already used" not in text and "time(s) before" not in text,
+      "other document" not in text and "time(s) before" not in text,
       "one account must not learn anything about another's orders")
 
 

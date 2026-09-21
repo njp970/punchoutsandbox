@@ -90,27 +90,35 @@ def duplicate_observations(order, tenant) -> list[str]:
                if o.order_id == order.order_id]
     if not earlier:
         return []
+    notes: list[str] = []
     retries = [o for o in earlier
                if order.payload_id and o.payload_id == order.payload_id]
-    if len(retries) == len(earlier):
-        return [
+    # Count DOCUMENTS, not receipts: a retried document is one earlier order,
+    # however many times it arrived.
+    others = {o.payload_id for o in earlier} - {order.payload_id}
+
+    # Both can be true at once — a retry of the second of two documents that
+    # share an orderID — and then both are said. Collapsing them told an
+    # honest retry to "reuse the original payloadID", which it just had.
+    if retries:
+        notes.append(
             f"This exact document (payloadID {order.payload_id}) has been "
-            f"received {len(earlier)} time(s) before in the last seven days. "
+            f"received {len(retries)} time(s) before in the last seven days. "
             "Resending with the same payloadID is how a retry is meant to look, "
             "and a supplier should recognise it rather than book a second "
             "order — but it is worth checking your side retried because it did "
-            "not get a response, rather than resubmitting a requisition."]
-    # Count DOCUMENTS, not receipts: a retried document is one earlier order,
-    # however many times it arrived.
-    fresh = len({o.payload_id for o in earlier} - {order.payload_id})
-    return [
-        f"orderID {order.order_id} was already used by {fresh} earlier order(s) "
-        "from this account in the last seven days, each with a different "
-        'payloadID, and this one is type="new" again. A supplier receiving a '
-        "second new order with a PO number it already holds will reject it as "
-        "a duplicate, ignore it, or book a second sales order — and the last is "
-        'how the same goods ship twice. A change should be type="update"; a '
-        "retry should reuse the original payloadID."]
+            "not get a response, rather than resubmitting a requisition.")
+    if others:
+        also = "also " if retries else ""
+        notes.append(
+            f"orderID {order.order_id} was {also}used by {len(others)} other "
+            "document(s) from this account in the last seven days, each with a "
+            'different payloadID and type="new". A supplier receiving a second '
+            "new order with a PO number it already holds will reject it as a "
+            "duplicate, ignore it, or book a second sales order — and the last "
+            'is how the same goods ship twice. A change should be type="update"; '
+            "a retry should reuse the original payloadID.")
+    return notes
 
 def handle_order(request: Request, tenant, *, site_url: str) -> Response:
     """Accept an `OrderRequest`, store it, and report what we saw."""
