@@ -68,9 +68,8 @@ def _text(root, path: str) -> Optional[str]:
     return value or None
 
 
-def _status_response(code: int, text: str, detail: str = "") -> Response:
-    """A cXML `Status`-only response.
-    """
+def _status_response(code: int, text: str, detail: str = "", *,
+                     record: bool = True, account=None) -> Response:
     """A cXML `Status`-only response.
 
     Returned with **HTTP 200**, deliberately. The spec is explicit that any
@@ -80,9 +79,12 @@ def _status_response(code: int, text: str, detail: str = "") -> Response:
     into an hours-long retry storm against us. Business-level errors ride
     inside a 200."""
     # Emitted here rather than at each call site, so a refusal path added
-    # later cannot be silent. A 401 on this endpoint is the single most useful
-    # thing to know about a stranger's first attempt.
-    telemetry.event("punchout_setup", outcome=str(code))
+    # later cannot be silent. `record=False` is for the one response that is
+    # NOT a punchout outcome: the 401, which the gate sends for /order as well
+    # and records itself, with the reason, as `auth_refused`. Recording it
+    # here too made every refused purchase order look like a failed punchout.
+    if record:
+        telemetry.event("punchout_setup", outcome=str(code), account=account)
     body = (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<!DOCTYPE cXML SYSTEM "http://xml.cxml.org/schemas/cXML/1.2.071/cXML.dtd">'
@@ -95,7 +97,7 @@ def _status_response(code: int, text: str, detail: str = "") -> Response:
                     content_type="text/xml; charset=utf-8")
 
 
-def handle_setup(request: Request, *, site_url: str) -> Response:
+def handle_setup(request: Request, *, site_url: str, account=None) -> Response:
     """Accept a `PunchOutSetupRequest` and hand back a `StartPage` URL."""
     raw = request.body
 
@@ -105,14 +107,15 @@ def handle_setup(request: Request, *, site_url: str) -> Response:
         # 406 rather than 400: the spec's guidance is that a parse failure is
         # "Not Acceptable", and it reserves 400 for documents that parsed
         # correctly but are unacceptable for another reason.
-        return _status_response(406, "Not Acceptable", str(exc))
+        return _status_response(406, "Not Acceptable", str(exc), account=account)
 
     report = validate(doc, expected_type="PunchOutSetupRequest")
     if report.document_type != "PunchOutSetupRequest":
         return _status_response(
             400, "Bad Request",
             f"This endpoint expects a PunchOutSetupRequest; received "
-            f"{report.document_type or 'an unrecognised document'}.")
+            f"{report.document_type or 'an unrecognised document'}.",
+            account=account)
 
     tree = doc.tree
     buyer_cookie = _text(tree, ".//BuyerCookie") or ""
@@ -128,7 +131,8 @@ def handle_setup(request: Request, *, site_url: str) -> Response:
         return _status_response(
             400, "Bad Request",
             "No BrowserFormPost/URL — there would be nowhere to return the "
-            "cart to. This is the one field this sandbox insists on.")
+            "cart to. This is the one field this sandbox insists on.",
+            account=account)
 
     from_identity = _text(tree, ".//From/Credential/Identity")
     to_identity = _text(tree, ".//To/Credential/Identity")
@@ -151,7 +155,8 @@ def handle_setup(request: Request, *, site_url: str) -> Response:
     # buyer cookie and identity inlined.
     start_page = f"{site_url}/shop?session={session.session_id}"
     telemetry.event("punchout_setup", outcome="200", operation=operation,
-                    conformant=report.conformant, errors=len(report.errors))
+                    conformant=report.conformant, errors=len(report.errors),
+                    account=account)
 
     observed = (
         f"operation={operation}; "
@@ -226,4 +231,4 @@ def unauthorised_response() -> Response:
         "Credentials not recognised. This sandbox issues a free identity and "
         "shared secret at https://punchoutsandbox.com/signup — put the "
         "identity in To/Credential/Identity and the secret in "
-        "Sender/Credential/SharedSecret.")
+        "Sender/Credential/SharedSecret.", record=False)

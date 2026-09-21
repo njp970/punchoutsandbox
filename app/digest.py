@@ -76,6 +76,37 @@ def _is_test(email: str) -> bool:
     return TEST_DOMAIN in (email or "").lower()
 
 
+def attribute_activity(by_account: dict, identity_email: dict) -> tuple:
+    """Split per-account event counts into real activity and our own noise.
+
+    THE RULE, and it is the same one `order_is_real` applies to orders: an
+    account id the tenant table cannot resolve is OURS BY CONSTRUCTION.
+    `cleanup_test_data.py` deletes test accounts and nothing deletes a real
+    one, so a deleted account's CloudWatch lines outlive the row that named
+    it. Unresolvable means deleted means test.
+
+    This existed inline and got the rule wrong: it defaulted the missing name
+    to "(unknown account)" and then only skipped addresses that *looked* like
+    tests, so four of our own video-capture orders were reported under REAL
+    ACTIVITY in the same digest whose `Orders received` line — correctly —
+    said zero. Two blocks in one report disagreeing about what counts is
+    exactly the kind of thing that makes a digest stop being believed, so the
+    decision now lives in one place with a test on it.
+
+    Returns (active, orphan_event_count) where active is [(email, summary)].
+    """
+    active, orphaned = [], 0
+    for identity, counts in by_account.items():
+        email = identity_email.get(identity)
+        if email is None or _is_test(email):
+            orphaned += sum(counts.values())
+            continue
+        summary = ", ".join(f"{n.replace('_', ' ')} {c}"
+                            for n, c in counts.most_common())
+        active.append((email, summary))
+    return sorted(active), orphaned
+
+
 def _events_by_account(since: float) -> dict:
     """Per-account event counts, keyed by the issued sandbox id.
 
@@ -115,6 +146,23 @@ def _events_by_account(since: float) -> dict:
         return per
 
 
+def tally(counts: Counter, payload: dict) -> None:
+    """Count one telemetry event.
+
+    Two events are only useful split by WHY, so they are also counted under
+    `name:detail`. A total of refused logins cannot tell one person on the
+    wrong secret from five people pasting the sample's placeholder, and those
+    need different fixes."""
+    name = payload.get("event")
+    if not name:
+        return
+    counts[name] += 1
+    if name == "punchout_setup":
+        counts[f"punchout_setup:{payload.get('outcome')}"] += 1
+    elif name == "auth_refused":
+        counts[f"auth_refused:{payload.get('reason')}"] += 1
+
+
 def _events(since: float) -> Counter:
     """Count telemetry events in the window.
 
@@ -139,11 +187,10 @@ def _events(since: float) -> Counter:
                 if not message.startswith("{"):
                     continue
                 try:
-                    name = json.loads(message).get("event")
+                    payload = json.loads(message)
                 except json.JSONDecodeError:
                     continue
-                if name:
-                    counts[name] += 1
+                tally(counts, payload)
             token = page.get("nextToken")
             if not token:
                 return counts
@@ -277,17 +324,10 @@ def build_report(now: Optional[datetime.datetime] = None) -> tuple[str, str]:
         lines.append(f"      {email}")
     # What people actually DID, per account. The most useful block in the
     # report when it is not empty.
-    active = []
-    for identity, counts in by_account.items():
-        email = identity_email.get(identity, "(unknown account)")
-        if _is_test(email):
-            continue
-        summary = ", ".join(f"{n.replace('_', ' ')} {c}"
-                            for n, c in counts.most_common())
-        active.append((email, summary))
+    active, orphan_events = attribute_activity(by_account, identity_email)
     if active:
         lines.append("  What they did")
-        for email, summary in sorted(active):
+        for email, summary in active:
             lines.append(f"      {email}: {summary}")
 
     lines += [
@@ -298,6 +338,22 @@ def build_report(now: Optional[datetime.datetime] = None) -> tuple[str, str]:
         f"  Anonymous limit hit    {events.get('anon_quota_exhausted', 0)}",
         "",
     ]
+
+    # Traffic, not attributed. Per-account punchouts are in "What they did";
+    # these totals include the QA suite, which refuses bad credentials on
+    # purpose, so the REASONS are the useful part rather than the count.
+    refusals = sorted(((k.split(":", 1)[1], v) for k, v in events.items()
+                       if k.startswith("auth_refused:")),
+                      key=lambda kv: -kv[1])
+    lines += [
+        "TRAFFIC — everyone, including our own QA runs",
+        f"  Punchout sessions      {events.get('punchout_setup:200', 0)}",
+        f"  Refused logins         {events.get('auth_refused', 0)}",
+    ]
+    if refusals:
+        lines.append("      " + ", ".join(
+            f"{reason.replace('_', ' ')} {n}" for reason, n in refusals))
+    lines.append("")
 
     # THE MESSAGES THEMSELVES, not a count of them. One was delivered to the
     # operator's mail server, accepted, and filtered into a junk folder where
@@ -335,6 +391,8 @@ def build_report(now: Optional[datetime.datetime] = None) -> tuple[str, str]:
         f"  Test accounts created  {len(new_test)}",
         f"  Operator signups       {len(new_operator)}",
         f"  Orders from those      {len(test_orders)}",
+        f"  Events from deleted    {orphan_events}"
+        "   (log lines that outlived the test account that made them)",
         f"  Deliveries refused     {events.get('delivery_refused', 0)}"
         "   (the SSRF checks in the QA suite)",
         "",

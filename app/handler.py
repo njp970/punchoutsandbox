@@ -17,6 +17,7 @@ Running locally:  python -m app.handler
 from __future__ import annotations
 
 import os
+import re
 import secrets
 from datetime import datetime, timezone
 from decimal import Decimal as D
@@ -608,16 +609,28 @@ def _oci_validate(callup) -> Response:
     return html(page, headers={"content-security-policy": AUTOSUBMIT_CSP})
 
 
-def _authenticate_machine(request: Request):
-    """Authenticate a buyer system by its issued credentials.
+def _machine_auth(request: Request):
+    """Authenticate a buyer system by its issued credentials, and say why not.
 
     cXML carries them in the header Credential blocks; OCI carries them as
     plain USERNAME/PASSWORD parameters. Both are checked against the identity
     the account was issued, and the secret is compared in constant time.
 
-    Returns the Tenant or None. Note this parses the body WITHOUT the hardened
-    XML front door for cXML — deliberately, it uses xml_safe.parse via
-    setup_request, which is the only thing that touches untrusted XML."""
+    Returns `(tenant, refusal)`. On success refusal is empty. On failure the
+    tenant is None and refusal is the telemetry for it — the REASON, never the
+    string that was presented, because a wrong identity field is as likely to
+    hold somebody's email address or their real secret as anything else. The
+    one exception is `wrong_secret`, where the identity was a real account and
+    is attributed like any other event (see `telemetry.account_of`).
+
+    The distinctions exist because one number hid them all: sixteen "failed
+    punchouts" in a week, which could have been one person on the wrong secret
+    or five people pasting the sample's placeholder, and could not even say
+    whether they were punchouts or purchase orders.
+
+    Note this parses the body WITHOUT the hardened XML front door for cXML —
+    deliberately, it uses xml_safe.parse via setup_request, which is the only
+    thing that touches untrusted XML."""
     if request.path == "/oci/setup":
         params = {**request.query}
         if request.method == "POST":
@@ -628,14 +641,34 @@ def _authenticate_machine(request: Request):
     else:
         identity, secret = setup_request.extract_credentials(request.body)
 
+    identity = (identity or "").strip()
     if not identity:
-        return None
-    tenant = tenants.store().by_sandbox_id(identity.strip())
+        return None, {"reason": "no_identity"}
+    tenant = tenants.store().by_sandbox_id(identity)
     if tenant is None:
-        return None
+        if "YOUR" in identity.upper():
+            return None, {"reason": "placeholder_identity"}
+        if _SANDBOX_ID_SHAPE.fullmatch(identity):
+            return None, {"reason": "unknown_sandbox_id"}
+        return None, {"reason": "unknown_identity"}
+    if not secret:
+        return None, {"reason": "no_secret",
+                      "account": telemetry.account_of(tenant)}
     if not tenants.verify_secret(secret, tenant.shared_secret):
-        return None
-    return tenant
+        return None, {"reason": "wrong_secret",
+                      "account": telemetry.account_of(tenant)}
+    return tenant, {}
+
+
+#: What an issued identity looks like (see `tenants.Tenant`). A string of
+#: this shape that matches no account is a typo or an expired account, which
+#: is a different fix from putting the wrong field in the wrong element.
+_SANDBOX_ID_SHAPE = re.compile(r"PSB\d{9}", re.I)
+
+
+def _authenticate_machine(request: Request):
+    """The tenant for a machine request, or None. See `_machine_auth`."""
+    return _machine_auth(request)[0]
 
 
 def _oci_background_search(callup) -> Response:
@@ -731,8 +764,12 @@ def oci_setup(request: Request) -> Response:
 def punchout_setup(request: Request) -> Response:
     """The machine-facing front door: a buyer system POSTs its
     PunchOutSetupRequest here and gets a StartPage URL back."""
+    # The account whose credentials opened the session — or, for a signed-in
+    # browser posting a document by hand, the account it is signed in as.
+    tenant = _authenticate_machine(request) or signup.current_tenant(request)
     return setup_request.handle_setup(
-        request, site_url=os.environ.get("SITE_URL", "https://punchoutsandbox.com"))
+        request, site_url=os.environ.get("SITE_URL", "https://punchoutsandbox.com"),
+        account=telemetry.account_of(tenant))
 
 
 @router.get("/signup")
@@ -1111,7 +1148,9 @@ def handler(event: dict, context=None) -> dict:
             # The machine endpoints authenticate with issued credentials
             # instead of a cookie — a buyer system cannot fill in a form.
             if request.path in ("/punchout/setup", "/oci/setup", "/order"):
-                tenant = _authenticate_machine(request)
+                tenant, refusal = _machine_auth(request)
+                if tenant is None:
+                    telemetry.event("auth_refused", path=request.path, **refusal)
             if tenant is None:
                 if request.path in ("/punchout/setup", "/order"):
                     return setup_request.unauthorised_response().to_lambda()
