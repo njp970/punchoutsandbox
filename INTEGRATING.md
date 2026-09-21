@@ -199,6 +199,21 @@ credentials arrived in, whether your header `Total` reconciles with the sum of
 your lines, and how many errors you have. That text lands in your own
 transaction log, which is where you will actually look at 2am.
 
+It also reports things that are valid cXML and will still hurt you on a real
+supplier, none of which a schema check can see:
+
+- **An `orderID` reused** with a new `payloadID` and `type="new"` — to a
+  supplier, a second order for a PO number it already holds. The same
+  `payloadID` again is a retry, and is said to be one.
+- **An `orderID` longer than 35 characters.** The supplier stores it as the
+  customer reference on its own sales order, and SAP's field is 35 characters.
+  A truncated PO number comes back wrong on the invoice.
+- **Non-ASCII in the `orderID`.** Legal, but it is copied into ERPs, EDI
+  translators and email subjects that will not all survive it.
+- **JSON escapes as literal text** — `\u00e9`, or worse `\uD83D`, half of an
+  emoji — and **doubly-encoded entities** like `&amp;amp;`. Both mean something
+  serialised the value twice, and the supplier keeps the damage verbatim.
+
 ---
 
 ## 6. What a schema check cannot tell you

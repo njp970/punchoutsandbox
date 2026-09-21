@@ -394,6 +394,15 @@ XML</code></pre>
     header <code>Total</code> reconciles with the sum of the lines. That lands
     in your own transaction log, which is where you will actually look.
   </p>
+  <p class="card-note">
+    It also says when an <code>orderID</code> has been used before with a new
+    <code>payloadID</code> (a second order, to a supplier, not a retry), when it
+    is longer than the 35 characters a supplier's customer-reference field
+    holds, when it contains non-ASCII, and when the document carries JSON
+    escapes like <code>\uD83D</code> or doubly-encoded entities like
+    <code>&amp;amp;amp;</code> as literal text. All of those are valid cXML, and
+    all of them come back wrong on the invoice.
+  </p>
 
   <p class="card-note"><strong>Then send documents back.</strong> On
     <a href="/orders">the order screen</a> you can generate:</p>

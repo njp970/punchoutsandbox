@@ -45,6 +45,8 @@ say so loudly in the observations.
 """
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass, field
 from decimal import Decimal as D, InvalidOperation
 from typing import Optional
@@ -240,5 +242,91 @@ def observations(order: Order) -> list[str]:
         notes.append(
             "No ShipTo country. The invoice generator needs one to pick a tax "
             "jurisdiction, and will fall back to the supplier's own country.")
+
+    return notes
+
+
+# --------------------------------------------------------------------------- #
+# The orderID and the bytes around it
+# --------------------------------------------------------------------------- #
+#: Where your orderID ends up: the supplier stores it as the customer
+#: reference on its own sales order, and that is a short field. SAP's
+#: (VBKD-BSTKD, "customer purchase order number") is 35 characters. cXML puts
+#: no limit on orderID at all, so nothing will warn you before a supplier's
+#: ERP truncates it — and a truncated PO number is one the invoice will not
+#: match.
+ORDER_ID_REFERENCE_LIMIT = 35
+
+#: A JSON-style escape that reached the XML as literal text: backslash, "u",
+#: four hex digits. XML has no such escape, so these are never decoded — the
+#: supplier stores the six characters as they are.
+_ESCAPE_TEXT = re.compile(r"\\u([0-9A-Fa-f]{4})")
+
+#: `&amp;` followed by another entity: something escaped text that was
+#: already escaped. The receiving side decodes once and keeps `&amp;` or
+#: `&#233;` as literal text.
+_DOUBLE_ENCODED = re.compile(r"&amp;(?:amp|lt|gt|quot|apos|#[0-9]+|#x[0-9A-Fa-f]+);")
+
+
+def identifier_observations(order: Order, raw: str) -> list[str]:
+    """Things about the characters in this order that will hurt downstream.
+
+    Written after a real integrator spent a week sending orderIDs made of
+    accents, CJK, emoji and — for two days — half an emoji written out as the
+    text `\\uD83D`, and then stopped doing that on the third day. Every one of
+    those documents validated. The DTD has no opinion about any of this, which
+    is exactly why it is worth saying out loud."""
+    notes: list[str] = []
+    oid = order.order_id or ""
+
+    if len(oid) > ORDER_ID_REFERENCE_LIMIT:
+        size = len(oid.encode("utf-8"))
+        notes.append(
+            f"orderID is {len(oid)} characters ({size} bytes as UTF-8). cXML "
+            "sets no limit, but the supplier keeps your orderID as the customer "
+            "reference on its own sales order, and those fields are short — "
+            f"SAP's is {ORDER_ID_REFERENCE_LIMIT} characters. A truncated PO "
+            "number is one the confirmation and invoice will quote back to you "
+            "wrongly, so they will not match the order you sent.")
+
+    if any(ord(c) > 127 for c in oid):
+        examples = "".join(sorted({c for c in oid if ord(c) > 127}))[:12]
+        notes.append(
+            f"orderID contains non-ASCII characters ({examples}). Legal — cXML "
+            "is UTF-8 — but the orderID gets copied into supplier ERPs, EDI "
+            "translators, email subjects and PDF filenames, several of which "
+            "will not survive it. An ASCII PO number is the one that comes back "
+            "unchanged on the invoice.")
+
+    escapes = _ESCAPE_TEXT.findall(raw or "")
+    if escapes:
+        halves = [h for h in escapes if 0xD800 <= int(h, 16) <= 0xDFFF]
+        where = " (including in the orderID)" if _ESCAPE_TEXT.search(oid) else ""
+        if halves:
+            notes.append(
+                f"The document contains {len(escapes)} JSON-style escape "
+                f"sequence(s) as literal text{where}, {len(halves)} of them "
+                f"half of a surrogate pair (\\u{halves[0].upper()}). That is "
+                "an emoji or other character outside the Basic Multilingual "
+                "Plane, escaped by a JSON serialiser and then written into XML, "
+                "which has no \\u escape — so it arrives as six characters of "
+                "text, and the other half of the pair is gone. Look for where "
+                "your code builds this value from JSON.")
+        else:
+            notes.append(
+                f"The document contains {len(escapes)} JSON-style escape "
+                f"sequence(s) as literal text{where} (\\u{escapes[0].upper()}). "
+                "XML has no \\u escape, so the supplier stores the backslash "
+                "and the hex digits exactly as sent. Something serialised this "
+                "value as JSON before it went into the XML.")
+
+    doubled = _DOUBLE_ENCODED.findall(raw or "")
+    if doubled:
+        notes.append(
+            f"The document contains {len(doubled)} doubly-encoded entit"
+            f"{'y' if len(doubled) == 1 else 'ies'} (for example "
+            f"{doubled[0]}). Something escaped text that was already escaped, "
+            "so the supplier decodes it once and keeps a literal "
+            "\"&amp;\" or \"&#233;\" in the name or description.")
 
     return notes
