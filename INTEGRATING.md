@@ -40,6 +40,19 @@ telling you what to fix:
 curl -s -X POST https://punchoutsandbox.com/punchout/setup -d '<cXML/>'
 ```
 
+### Behind Ariba Network
+
+If your buyer system reaches suppliers through Ariba Network, you cannot send
+our identity: the network writes its own IDs into `From` and `To` and
+`sysadmin@ariba.com` into `Sender`. Only the shared secret passes through.
+
+So set up a test supplier account on the network with
+`https://punchoutsandbox.com/punchout/setup` as its punchout URL and **your
+sandbox secret as its shared secret**. The secret alone identifies your
+account, for punchouts and for orders sent to `/order`. Documents we send back
+(confirmations, ship notices, invoices) go straight to the inbox you set at
+`/settings`, not back through the network.
+
 ---
 
 ## 2. The JSON API

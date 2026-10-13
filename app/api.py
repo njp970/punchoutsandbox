@@ -253,7 +253,9 @@ def view_signup(request: Request) -> Response:
             "headers": {"X-Sandbox-Identity": tenant.sandbox_id,
                         "X-Sandbox-Secret": tenant.shared_secret},
             "cxml": ("Put the identity in To/Credential/Identity and the "
-                     "secret in Sender/Credential/SharedSecret."),
+                     "secret in Sender/Credential/SharedSecret. Behind Ariba "
+                     "Network, which writes its own IDs into From and To, "
+                     "the secret alone is enough."),
             "oci": "Send them as USERNAME and PASSWORD.",
         },
         "endpoints": {

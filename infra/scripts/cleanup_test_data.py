@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Delete the accounts and orders that `tests/qa_live.py` leaves behind.
 
-    .venv/bin/python infra/scripts/cleanup_test_data.py            # dry run
-    .venv/bin/python infra/scripts/cleanup_test_data.py --execute
+    infra/.venv/bin/python infra/scripts/cleanup_test_data.py            # dry run
+    infra/.venv/bin/python infra/scripts/cleanup_test_data.py --execute
 
 =============================================================================
 WHY THIS IS NEEDED AT ALL
@@ -32,10 +32,11 @@ Leave what is about to delete itself.
 **Counters** (ANON/CONTACT/ALERT). Two-day TTL, and clearing them would reset
 somebody's rate limit as a side effect of housekeeping.
 
-Accounts are stored as TWO rows — `TENANT#<id>` and a `SANDBOXID#<id>` pointer
-that the machine endpoints authenticate against — and both go together. A
-stranded pointer authenticates nothing (the lookup that follows it returns
-None) but it is exactly the kind of debris that makes a table hard to read.
+Accounts are stored as an account row, `TENANT#<id>`, plus pointer rows
+(`SANDBOXID#`, `EMAIL#`, `SECRET#`) that lookups follow — and all of them go
+together. A stranded pointer authenticates nothing (the lookup that follows it
+returns None) but it is exactly the kind of debris that makes a table hard to
+read.
 """
 from __future__ import annotations
 
@@ -94,8 +95,10 @@ def main() -> int:
 
         if pk.startswith("TENANT#") and pk.split("#", 1)[1] in doomed_tenants:
             keys.append((key, f"account {doomed_tenants[pk.split('#', 1)[1]]}"))
-        elif pk.startswith("SANDBOXID#") and str(item.get("tenant_id", "")) in doomed_tenants:
-            keys.append((key, f"credential pointer {pk.split('#', 1)[1]}"))
+        elif sk == "POINTER" and str(item.get("tenant_id", "")) in doomed_tenants:
+            # SANDBOXID#, EMAIL# and SECRET# alike. Matching on the prefix
+            # missed every pointer added after this script was written.
+            keys.append((key, f"pointer {pk.split('#', 1)[0]}"))
         elif pk.startswith("MESSAGE#") and TEST_EMAIL.search(str(item.get("email", ""))):
             keys.append((key, f"contact message from {item.get('email')}"))
         elif pk.startswith("ORDERS#") and TEST_ORDER.match(str(item.get("order_id", ""))):

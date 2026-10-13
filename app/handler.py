@@ -616,17 +616,29 @@ def _machine_auth(request: Request):
     plain USERNAME/PASSWORD parameters. Both are checked against the identity
     the account was issued, and the secret is compared in constant time.
 
-    Returns `(tenant, refusal)`. On success refusal is empty. On failure the
-    tenant is None and refusal is the telemetry for it — the REASON, never the
-    string that was presented, because a wrong identity field is as likely to
-    hold somebody's email address or their real secret as anything else. The
-    one exception is `wrong_secret`, where the identity was a real account and
-    is attributed like any other event (see `telemetry.account_of`).
+    Returns `(tenant, detail)`. On success detail is empty, or says
+    `{"via": "secret"}` when the secret alone identified the account. On
+    failure the tenant is None and detail is the telemetry for it — the
+    REASON, never the string that was presented, because a wrong identity
+    field is as likely to hold somebody's email address or their real secret
+    as anything else. The one exception is `wrong_secret`, where the identity
+    was a real account and is attributed like any other event (see
+    `telemetry.account_of`).
 
     The distinctions exist because one number hid them all: sixteen "failed
     punchouts" in a week, which could have been one person on the wrong secret
     or five people pasting the sample's placeholder, and could not even say
     whether they were punchouts or purchase orders.
+
+    THE SECRET ALONE IS ENOUGH WHEN THE IDENTITY IS NOT OURS. A buyer behind
+    Ariba Network cannot put our identity anywhere: the network writes its own
+    IDs into From and To and `sysadmin@ariba.com` into Sender, and passes on
+    only the shared secret the supplier configured. A real supplier on the
+    network authenticates exactly that way, and each issued secret is 32
+    random characters belonging to one account, so it identifies the account
+    by itself. An identity that DOES name an account still has to come with
+    that account's secret — a request aimed at one account is never quietly
+    served as another.
 
     Note this parses the body WITHOUT the hardened XML front door for cXML —
     deliberately, it uses xml_safe.parse via setup_request, which is the only
@@ -642,10 +654,13 @@ def _machine_auth(request: Request):
         identity, secret = setup_request.extract_credentials(request.body)
 
     identity = (identity or "").strip()
-    if not identity:
-        return None, {"reason": "no_identity"}
-    tenant = tenants.store().by_sandbox_id(identity)
+    tenant = tenants.store().by_sandbox_id(identity) if identity else None
     if tenant is None:
+        by_secret = tenants.store().by_shared_secret(secret) if secret else None
+        if by_secret is not None:
+            return by_secret, {"via": "secret"}
+        if not identity:
+            return None, {"reason": "no_identity"}
         if "YOUR" in identity.upper():
             return None, {"reason": "placeholder_identity"}
         if _SANDBOX_ID_SHAPE.fullmatch(identity):
@@ -1148,9 +1163,14 @@ def handler(event: dict, context=None) -> dict:
             # The machine endpoints authenticate with issued credentials
             # instead of a cookie — a buyer system cannot fill in a form.
             if request.path in ("/punchout/setup", "/oci/setup", "/order"):
-                tenant, refusal = _machine_auth(request)
+                tenant, detail = _machine_auth(request)
                 if tenant is None:
-                    telemetry.event("auth_refused", path=request.path, **refusal)
+                    telemetry.event("auth_refused", path=request.path, **detail)
+                elif detail.get("via") == "secret":
+                    # Recorded because it is the only sign that anybody is
+                    # coming through Ariba Network (or a network like it).
+                    telemetry.event("auth_by_secret", path=request.path,
+                                    account=telemetry.account_of(tenant))
             if tenant is None:
                 if request.path in ("/punchout/setup", "/order"):
                     return setup_request.unauthorised_response().to_lambda()

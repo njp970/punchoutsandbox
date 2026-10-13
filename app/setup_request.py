@@ -37,6 +37,12 @@ exchanging a shared secret out of band before anything connects is exactly
 how real punchout works, so requiring it makes the sandbox more faithful
 rather than less.
 
+The identity turned out to be the part a buyer cannot always control. Behind
+Ariba Network, From and To carry the network's own IDs and Sender carries
+`sysadmin@ariba.com`; only the shared secret passes through. So when the
+identity names no account, the secret alone is looked up — see
+`handler._machine_auth`.
+
 What survives from the original design is the reporting. A request that
 authenticates still gets back **exactly what we saw** in the `Status` text —
 which identity arrived, in which element, and whether a SharedSecret was
@@ -231,4 +237,6 @@ def unauthorised_response() -> Response:
         "Credentials not recognised. This sandbox issues a free identity and "
         "shared secret at https://punchoutsandbox.com/signup — put the "
         "identity in To/Credential/Identity and the secret in "
-        "Sender/Credential/SharedSecret.", record=False)
+        "Sender/Credential/SharedSecret. Behind Ariba Network, which writes "
+        "its own IDs into From and To, the secret alone is enough.",
+        record=False)

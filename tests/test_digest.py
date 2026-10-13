@@ -103,7 +103,8 @@ for payload in ([{"event": "punchout_setup", "outcome": "200"}] * 76
                 + [{"event": "punchout_setup", "outcome": "400"}]
                 + [{"event": "auth_refused", "reason": "wrong_secret"}] * 9
                 + [{"event": "auth_refused", "reason": "placeholder_identity"}] * 5
-                + [{"event": "auth_refused", "reason": "unknown_identity"}] * 2):
+                + [{"event": "auth_refused", "reason": "unknown_identity"}] * 2
+                + [{"event": "auth_by_secret", "path": "/punchout/setup"}] * 3):
     digest.tally(EVENTS, payload)
 
 digest._table = lambda: None
@@ -120,6 +121,8 @@ check("the tally splits punchouts by outcome",
       EVENTS["punchout_setup"] == 77 and EVENTS["punchout_setup:200"] == 76)
 check("successful punchouts are reported", "Punchout sessions      76" in body)
 check("refused logins are reported", "Refused logins         16" in body)
+check("logins by secret alone are reported — the sign of Ariba Network users",
+      "Logins by secret only  3" in body)
 check("...broken down by reason, largest first",
       "wrong secret 9, placeholder identity 5, unknown identity 2" in body,
       body[body.find("Refused logins"):][:120])

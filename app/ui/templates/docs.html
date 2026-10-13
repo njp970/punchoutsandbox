@@ -35,7 +35,12 @@
               secret out of band is how real punchout works, so this is
               faithful rather than fussy. Whatever arrives is
               <strong>echoed back</strong> in the response <code>Status</code>,
-              so you can see exactly which field it landed in.</td></tr>
+              so you can see exactly which field it landed in.
+              <br><strong>Behind Ariba Network?</strong> The network writes
+              its own IDs into <code>From</code> and <code>To</code>, so you
+              cannot send our identity. Give your test supplier account on the
+              network this secret as its shared secret: the secret alone
+              identifies you.</td></tr>
       <tr><th>Required</th>
           <td>Only <code>BrowserFormPost/URL</code>. Without it there is
               nowhere to return the cart, so that one is refused up front

@@ -328,6 +328,22 @@ check("the Status text reports what we sent",
       "sharedSecret=present" in setup.text and "buyerCookie=present" in setup.text,
       "no other tool tells you which field your credentials arrived in")
 
+# What Ariba Network forwards: its own IDs in From and To, sysadmin@ariba.com
+# in Sender, and nothing of ours but the secret.
+network = envelope(setup_body).replace(
+    b"<Identity>qa-buyer</Identity></Credential></From>",
+    b"<Identity>AN01000000001-T</Identity></Credential></From>").replace(
+    f"<Identity>{identity}</Identity>".encode(),
+    b"<Identity>AN01000000002-T</Identity>").replace(
+    b'<Credential domain="NetworkID"><Identity>qa-buyer</Identity>',
+    b'<Credential domain="AribaNetworkUserId"><Identity>sysadmin@ariba.com</Identity>')
+check("the network-shaped request really carries none of our identity",
+      identity.encode() not in network and b"sysadmin@ariba.com" in network)
+reply = request("/punchout/setup", "POST", data=network, use_cookies=False)
+check("a request through Ariba Network gets in on the secret alone",
+      cxml_status(reply.text)[0] == "200" and "<StartPage>" in reply.text,
+      f"cXML {cxml_status(reply.text)[0]}")
+
 bad_secret = envelope(setup_body).replace(secret.encode(), b"wrong-secret")
 reply = request("/punchout/setup", "POST", data=bad_secret, use_cookies=False)
 check("a wrong shared secret is refused", cxml_status(reply.text)[0] == "401",

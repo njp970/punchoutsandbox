@@ -45,6 +45,7 @@ would oblige us to store a hash we have no use for.
 """
 from __future__ import annotations
 
+import hashlib
 import hmac
 import os
 import re
@@ -131,9 +132,19 @@ def normalise_email(email: str) -> str:
     return (email or "").strip().lower()
 
 
+def secret_digest(secret: str) -> str:
+    """The key a shared secret is looked up by — its SHA-256, never itself.
+
+    The secret is already stored on the account row; the point is to keep it
+    out of the KEY space, which is what gets printed by housekeeping scripts,
+    listed in the console, and copied into anything that logs keys."""
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()
+
+
 class TenantStore(Protocol):
     def get(self, tenant_id: str) -> Optional[Tenant]: ...
     def by_sandbox_id(self, sandbox_id: str) -> Optional[Tenant]: ...
+    def by_shared_secret(self, secret: str) -> Optional[Tenant]: ...
     def by_email(self, email: str) -> Optional[Tenant]: ...
     def put(self, tenant: Tenant) -> None: ...
     def count(self) -> int: ...
@@ -155,6 +166,12 @@ class MemoryTenants:
                 return t
         return None
 
+    def by_shared_secret(self, secret):
+        for t in self._items.values():
+            if verify_secret(secret, t.shared_secret) and not t.expired:
+                return t
+        return None
+
     def by_email(self, email):
         wanted = normalise_email(email)
         for t in self._items.values():
@@ -172,10 +189,11 @@ class MemoryTenants:
 class DynamoTenants:
     """DynamoDB-backed accounts, in the table `data_stack.py` provisions.
 
-    Two access patterns, so two keys: `TENANT#<id>` for the browser session,
-    and a `SANDBOXID#<id>` pointer row for the machine endpoints. A GSI would
-    also work; a pointer row is cheaper to reason about at this volume and
-    needs no index projection decisions."""
+    One account row, `TENANT#<id>`, for the browser session, and a pointer row
+    per other way in: `SANDBOXID#<id>` and `SECRET#<digest>` for the machine
+    endpoints, `EMAIL#<address>` for signup. A GSI would also work; a pointer
+    row is cheaper to reason about at this volume and needs no index
+    projection decisions."""
 
     def __init__(self, table_name: str) -> None:
         self.table_name = table_name
@@ -216,6 +234,26 @@ class DynamoTenants:
             Key={"pk": f"SANDBOXID#{sandbox_id}", "sk": "POINTER"}).get("Item")
         return self.get(pointer["tenant_id"]) if pointer else None
 
+    def by_shared_secret(self, secret):
+        """Look up an account by its secret alone — for buyers behind a network.
+
+        A third pointer row, keyed on the secret's digest. Accounts created
+        before it existed have none until their next `put`, or until
+        `infra/scripts/backfill_secret_pointers.py` runs.
+
+        The pointer only says where to look. The secret is then compared
+        against the account itself, in constant time, so a stale or forged
+        pointer authenticates nothing."""
+        if not secret:
+            return None
+        pointer = self.table.get_item(
+            Key={"pk": f"SECRET#{secret_digest(secret)}", "sk": "POINTER"}
+        ).get("Item")
+        tenant = self.get(pointer["tenant_id"]) if pointer else None
+        if tenant is None or not verify_secret(secret, tenant.shared_secret):
+            return None
+        return tenant
+
     def by_email(self, email):
         """Look up an account by the address it was created with.
 
@@ -252,6 +290,11 @@ class DynamoTenants:
         })
         self.table.put_item(Item={
             "pk": f"EMAIL#{normalise_email(tenant.email)}", "sk": "POINTER",
+            "tenant_id": tenant.tenant_id,
+            "expires_at": int(tenant.expires_at),
+        })
+        self.table.put_item(Item={
+            "pk": f"SECRET#{secret_digest(tenant.shared_secret)}", "sk": "POINTER",
             "tenant_id": tenant.tenant_id,
             "expires_at": int(tenant.expires_at),
         })

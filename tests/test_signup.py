@@ -127,9 +127,14 @@ check("but over HTTP 200", st == 200,
       "retries ten times hourly — a real 401 would cause a retry storm")
 check("and says where to get credentials", "signup" in body)
 
-unknown = CXML.replace("{SID}", "PSB000000000").replace("{SEC}", sec).encode()
-check("unknown identity is refused",
+unknown = CXML.replace("{SID}", "PSB000000000").replace("{SEC}", "wrong").encode()
+check("unknown identity with an unknown secret is refused",
       'code="401"' in go("/punchout/setup", "POST", unknown, ct="text/xml")[1])
+# An identity that names no account does not sink a valid secret: behind Ariba
+# Network the identity is the network's, and the secret is all that is ours.
+unknown = CXML.replace("{SID}", "PSB000000000").replace("{SEC}", sec).encode()
+check("unknown identity with a valid secret gets in on the secret",
+      "<StartPage>" in go("/punchout/setup", "POST", unknown, ct="text/xml")[1])
 check("OCI with no credentials is refused",
       go("/oci/setup", query={"HOOK_URL": "https://x/h"})[0] == 401)
 check("OCI with a wrong secret is refused",

@@ -348,8 +348,12 @@ def build_report(now: Optional[datetime.datetime] = None) -> tuple[str, str]:
     lines += [
         "TRAFFIC — everyone, including our own QA runs",
         f"  Punchout sessions      {events.get('punchout_setup:200', 0)}",
-        f"  Refused logins         {events.get('auth_refused', 0)}",
     ]
+    # Logins on the secret alone are how a buyer behind Ariba Network gets in,
+    # so this line is the only answer to "is anyone using it that way?".
+    if events.get("auth_by_secret"):
+        lines.append(f"  Logins by secret only  {events['auth_by_secret']}")
+    lines.append(f"  Refused logins         {events.get('auth_refused', 0)}")
     if refusals:
         lines.append("      " + ", ".join(
             f"{reason.replace('_', ' ')} {n}" for reason, n in refusals))
