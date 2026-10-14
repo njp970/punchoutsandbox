@@ -49,7 +49,9 @@ our identity: the network writes its own IDs into `From` and `To` and
 So set up a test supplier account on the network with
 `https://punchoutsandbox.com/punchout/setup` as its punchout URL and **your
 sandbox secret as its shared secret**. The secret alone identifies your
-account, for punchouts and for orders sent to `/order`. Documents we send back
+account, for punchouts and for orders sent to `/order`. This has been confirmed
+with a real Ariba Network test account (October 2026), and the network accepts
+the full 32-character secret. Documents we send back
 (confirmations, ship notices, invoices) go straight to the inbox you set at
 `/settings`, not back through the network.
 
