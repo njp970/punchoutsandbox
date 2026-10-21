@@ -49,11 +49,19 @@ our identity: the network writes its own IDs into `From` and `To` and
 So set up a test supplier account on the network with
 `https://punchoutsandbox.com/punchout/setup` as its punchout URL and **your
 sandbox secret as its shared secret**. The secret alone identifies your
-account, for punchouts and for orders sent to `/order`. This has been confirmed
-with a real Ariba Network test account (October 2026), and the network accepts
-the full 32-character secret. Documents we send back
-(confirmations, ship notices, invoices) go straight to the inbox you set at
-`/settings`, not back through the network.
+account, for punchouts and for orders sent to `/order`. Punchout this way has
+been confirmed with a real Ariba Network test account (October 2026), and the
+network accepts the full 32-character secret.
+
+**Orders need one more setting.** The punchout URL does not cover them: the
+network only forwards a purchase order by cXML if the supplier account's order
+routing is set to cXML, with `https://punchoutsandbox.com/order` as the URL.
+Otherwise it keeps the order in the supplier's online inbox and nothing reaches
+the sandbox. Orders through the network have not been tried yet; if you send
+one, tell us how it went.
+
+Documents we send back (confirmations, ship notices, invoices) go straight to
+the inbox you set at `/settings`, not back through the network.
 
 ---
 

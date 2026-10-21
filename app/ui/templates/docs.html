@@ -10,8 +10,9 @@
   and get a real cart back &mdash; cXML validated against the actual DTDs on
   the way through. <a href="/validate">The validator is open to everyone</a>;
   running a punchout round trip needs
-  <a href="/signup">one email for credentials</a>. Nothing you send is stored
-  beyond an hour.
+  <a href="/signup">one email for credentials</a>. Punchout sessions last an
+  hour; orders you send, and the documents you generate from them, are kept
+  for seven days.
 </p>
 
 <div class="card">
@@ -40,7 +41,8 @@
               its own IDs into <code>From</code> and <code>To</code>, so you
               cannot send our identity. Give your test supplier account on the
               network this secret as its shared secret: the secret alone
-              identifies you.</td></tr>
+              identifies you. Confirmed with a real Ariba Network test account,
+              which accepts the full 32-character secret.</td></tr>
       <tr><th>Required</th>
           <td>Only <code>BrowserFormPost/URL</code>. Without it there is
               nowhere to return the cart, so that one is refused up front
@@ -394,6 +396,15 @@ XML</code></pre>
     reason for sending it here.
   </p>
   <p class="card-note">
+    <strong>Behind Ariba Network,</strong> the secret alone identifies you here
+    too. But the punchout URL does not cover orders: the network only forwards a
+    purchase order by cXML if the supplier account's order routing is set to
+    cXML, with this URL. Otherwise it keeps the order in the supplier's online
+    inbox, and nothing reaches the sandbox. Orders through the network have not
+    been tried yet, so if you send one, <a href="/contact">tell us</a> how it
+    went.
+  </p>
+  <p class="card-note">
     The response puts everything we noticed in the <code>Status</code> text:
     line count, whether <code>lineNumber</code> was present, whether your
     header <code>Total</code> reconciles with the sum of the lines. That lands
@@ -634,7 +645,11 @@ XML</code></pre>
       <tr><th>Daily limit</th><td>25 validations without an account, 500 with
           one. If you hit either legitimately, say so &mdash; it is a number,
           not a policy.</td></tr>
-      <tr><th>Credentials</th><td>Not enforced. Anything is accepted and echoed back.</td></tr>
+      <tr><th>Credentials</th><td>Required on <code>/punchout/setup</code>,
+          <code>/order</code> and <code>/oci/setup</code>: your identity and
+          secret, or the secret alone when the identity is not one we issued
+          (as behind Ariba Network). A punchout that gets in echoes back
+          what arrived in its <code>Status</code>.</td></tr>
       <tr><th>OCI functions</th>
           <td><code>DETAIL</code>, <code>VALIDATE</code> and
               <code>BACKGROUND_SEARCH</code> are implemented.

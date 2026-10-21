@@ -75,8 +75,9 @@ revenue.
 | | |
 |---|---|
 | Protocols | cXML PunchOut, SAP OCI |
+| Networks | Ariba Network: punchout confirmed by an outside user, logging in on the shared secret alone; orders through it not yet tried |
 | Documents | `PunchOutSetupRequest` · `PunchOutOrderMessage` · `OrderRequest` · `ConfirmationRequest` · `ShipNoticeRequest` · `InvoiceDetailRequest` |
-| Tests | 13 suites, plus a 147-check QA suite that runs against the deployed site |
+| Tests | 16 suites, plus a 148-check QA suite that runs against the deployed site |
 | Not built | `multipart/related` attachments; OCI `SOURCING` (SAP never implemented it either) |
 
 Its first serious use by an outside integrator found six defects in **their**
